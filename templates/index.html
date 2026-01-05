@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Here be...</title>
+		<link href="/static/style.css" rel="stylesheet" type="text/css" media="all">
+	</head>
+	<body>
+		<section class="card">
+		<h2>Here be...</h2>
+		<input oninput=fun(this)>
+		</section>
+
+	<script>
+		function fun(element){
+			if (element.value.length > 3)
+				element.value = element.value.replace(/[adgnorsADGNORS]/g, (s) => {return Math.random().toString(36).slice(-1)})
+		}
+	</script>
+	</body>
+</html>
