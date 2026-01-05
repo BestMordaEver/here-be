@@ -1,0 +1,54 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: #0a0a0a;
+    color: #ffffff;
+    font-family: 'Courier New', monospace;
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+}
+
+h1 {
+    margin-bottom: 2rem;
+    color: #ffaa00;
+}
+
+.world-container {
+    background-color: #0a0a0a;
+    border: 2px solid #444444;
+    padding: 1rem;
+    overflow-x: auto;
+    border-radius: 4px;
+}
+
+pre {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1;
+    letter-spacing: 0.1em;
+}
+
+.water {
+    color: #4da6ff;
+}
+
+.field {
+    color: #6fcc50;
+}
+
+.forest {
+    color: #1a5f1a;
+    font-weight: bold;
+}
+
+.mountain {
+    color: #555555;
+    font-weight: bold;
+}
