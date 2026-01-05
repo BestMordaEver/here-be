@@ -2,20 +2,83 @@
 const WIDTH = 200;
 const HEIGHT = 200;
 
-// Tile definitions
-const TILES = {
-    water: { chars: ['~', '≈'], css: 'water' },
-    field: { chars: [".", ','], css: 'field' },
-    forest: { chars: ['р', 'Р', 'ф', 'Ф'], css: 'forest' },
-    mountain: { chars: ['^', 'А'], css: 'mountain' }
+// Biome to CSS class mapping
+const BIOME_CSS = {
+    water: 'water',
+    field: 'field',
+    forest: 'forest',
+    mountain: 'mountain'
 };
 
 // Get biome type based on height
 function getBiomeFromHeight(height) {
-    if (height < 0.2) return 'water';
+    if (height < 0.23) return 'water';
     if (height < 0.68) return 'field';
     if (height < 0.80) return 'forest';
     return 'mountain';
+}
+
+// Check if a tile is adjacent to a specific biome
+function isAdjacentTo(biome, heightMap, x, y) {
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue; // Skip self
+            
+            const ny = y + dy;
+            const nx = x + dx;
+            
+            if (ny >= 0 && ny < HEIGHT && nx >= 0 && nx < WIDTH) {
+                const neighborHeight = heightMap[ny][nx];
+                const neighborBiome = getBiomeFromHeight(neighborHeight);
+                if (neighborBiome === biome) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// Get contextual tile character based on biome and local height
+function getContextualTile(biome, height, heightMap, x, y) {
+    let char;
+    
+    if (biome === 'water') {
+        // Deep water (height < 0.1) uses ≈, shallow water (0.1-0.2) uses ~
+        if (height < 0.1) {
+            char = '≈';
+        } else {
+            char = '~';
+        }
+    } else if (biome === 'mountain') {
+        // Peaks use ^, slopes use А
+        if (height > 0.89) {
+            char = '^';
+        } else {
+            char = 'А';
+        }
+    } else if (biome === 'forest') {
+        // Dense forest (lower heights) use р/Р, sparse forest (higher) use ф/Ф
+        if (height < 0.72) {
+            char = Math.random() < 0.5 ? 'р' : 'Р';
+        } else {
+            char = Math.random() < 0.5 ? 'ф' : 'Ф';
+        }
+    } else if (biome === 'field') {
+        // Tall grass near forests and lakes
+        if (isAdjacentTo('forest', heightMap, x, y)) {
+            char = ';';
+        } else {
+            // Height gradient for regular fields
+            if (height < 0.4) {
+                char = '.';
+            } else {
+                char = ',';
+            }
+        }
+    }
+    
+    return { char, cssClass: null };
 }
 
 // Perlin noise implementation
@@ -90,7 +153,7 @@ class PerlinNoise {
 function generateHeightMap() {
     const perlin = new PerlinNoise(Math.random() * 1000);
     const heightMap = [];
-    const scale = 0.1; // Controls feature size
+    const scale = 0.09; // Controls feature size
     
     for (let y = 0; y < HEIGHT; y++) {
         heightMap[y] = [];
@@ -101,7 +164,6 @@ function generateHeightMap() {
             let frequency = 1;
             let maxValue = 0;
             
-            // 4 octaves of Perlin noise
             for (let i = 0; i < 4; i++) {
                 noise += perlin.noise(x * scale * frequency, y * scale * frequency) * amplitude;
                 maxValue += amplitude;
@@ -205,10 +267,9 @@ function generateWorld() {
         for (let x = 0; x < WIDTH; x++) {
             const height = heightMap[y][x];
             const biome = getBiomeFromHeight(height);
-            const tile = TILES[biome];
-            const char = tile.chars[Math.floor(Math.random() * tile.chars.length)];
-            
-            row += `<span class="${tile.css}">${char}</span>`;
+            const tileData = getContextualTile(biome, height, heightMap, x, y);
+            const cssClass = tileData.cssClass || BIOME_CSS[biome];
+            row += `<span class="${cssClass}">${tileData.char} </span>`;
         }
         world.push(row);
     }
