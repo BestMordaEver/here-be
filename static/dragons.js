@@ -9,8 +9,11 @@ for (element of document.getElementsByClassName('fading')) {
 
 let properties = []
 
-for (button of document.getElementsByClassName('primary')) {
+for (button of document.getElementsByTagName('button')) {
 	button.addEventListener('click', function () {
+		for (sibling of this.parentElement.children) {
+			sibling.removeEventListener('click', arguments.callee)
+		}
 		if (this.name) properties.push(this.name)
 		if (!this.classList.contains('submit')) this.parentElement.classList.add('faded')
 	})
@@ -18,7 +21,6 @@ for (button of document.getElementsByClassName('primary')) {
 
 for (button of document.getElementsByClassName('submit')) {
 	button.addEventListener('click', async (event) => {
-		console.log(properties)
 		event.preventDefault();
 	
 		const response = await fetch('https://here-be.vercel.app/api/submit', {
