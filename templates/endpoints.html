@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Endpoint Access Statistics</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="stats-page">
+    <div class="stats-container">
+        <table>
+            <tbody>
+                {% set max_count = endpoint_stats[0][1] %}
+                {% for endpoint, count in endpoint_stats %}
+                    <tr>
+                        <td class="endpoint">{{ endpoint }}</td>
+                        <td class="count">{{ count }}</td>
+                        <td>
+                            <div class="bar" style="width: {{ (count / max_count * 100) }}%;"></div>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

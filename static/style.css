@@ -1,9 +1,8 @@
-/* ===== CSS Reset & Variables ===== */
+/* ===== CSS Variables ===== */
 :root {
     --bg-main: #e5e076;
     --bg-panel: #f5f086;
     --bg-hover: #ffff96;
-    --bg-accent: #ffffa1;
 
     --text-main: #000000;
     --text-muted: #303030;
@@ -12,10 +11,8 @@
     --primary: #9b9b36;
     --danger: #aa1e1e;
 
-    --radius: 6px;
     --radius-sm: 4px;
     --transition: 0.2s ease;
-    --control-width: 600px;
 }
 
 * {
@@ -35,22 +32,17 @@ body {
     align-items: center;
 }
 
-/* ===== Generic Inputs ===== */
+/* ===== Inputs & Buttons ===== */
 input,
-select,
-textarea,
 button {
     width: 100%;
-}
-
-input,
-select,
-button {
     background-color: var(--bg-panel);
     color: var(--text-main);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     padding: 0.5em 0.6em;
+    cursor: pointer;
+    margin: 0.5em 0;
     transition: background-color var(--transition),
                 border-color var(--transition),
                 box-shadow var(--transition);
@@ -61,82 +53,45 @@ input::placeholder {
 }
 
 input:focus,
-select:focus,
 button:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(78, 161, 255, 0.2);
+    box-shadow: 0 0 0 2px rgba(155, 155, 54, 0.2);
 }
 
-input[type="checkbox"] {
-    width: 1.2em;
-    height: 1.2em;
-    accent-color: var(--primary);
-}
-
-select,
-button,
-input[type="submit"] {
-    cursor: pointer;
-    margin: 0.5em 0;
-}
-
-button:hover,
-input[type="submit"]:hover,
-select:hover {
+button:hover {
     background-color: var(--bg-hover);
 }
 
-/* ===== Main Content ===== */
+/* ===== Card Layout ===== */
 .card {
-  background: var(--bg-panel);
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 24px;
+    background: var(--bg-panel);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
 }
 
 .card h2 {
     margin-bottom: 15px;
 }
 
+/* ===== Form Groups ===== */
 .form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-/* ===== Forms ===== */
-.content form {
     display: flex;
     flex-direction: column;
-    gap: 0.75em;
-    max-width: 600px;
+    gap: 6px;
+    margin-bottom: 12px;
 }
 
-.content label {
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--text-muted);
-}
-
-.horizontal-group {
-    display: flex;
-    gap: 0.75em;
-    align-items: center;
-}
-
-/* ===== Buttons ===== */
-button.primary,
-input.primary {
+/* ===== Button Variants ===== */
+button.primary {
     background-color: var(--primary);
     border-color: var(--primary);
     color: #000;
     font-weight: 600;
 }
 
-button.primary:hover,
-input.primary:hover {
+button.primary:hover {
     background-color: #abab46;
 }
 
@@ -147,12 +102,11 @@ button.danger {
     font-weight: 600;
 }
 
-button.danger:hover,
-input.danger:hover {
+button.danger:hover {
     background-color: #b15a5a;
 }
 
-/* ===== Utilities ===== */
+/* ===== Utility Classes ===== */
 .fading {
     transition: opacity 1s ease;
 }
@@ -165,6 +119,62 @@ input.danger:hover {
     display: none;
 }
 
-.show {
-    display: block;
+/* ===== Statistics Page ===== */
+.stats-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    justify-content: flex-start;
+    align-items: flex-start;
+}
+
+.stats-container {
+    width: 100%;
+    background: var(--bg-panel);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+thead {
+    background-color: var(--bg-hover);
+    border-bottom: 2px solid var(--border-color);
+}
+
+th {
+    padding: 15px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+td {
+    padding: 12px 15px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+tbody tr:hover {
+    background-color: var(--bg-hover);
+}
+
+.endpoint {
+    font-family: 'Courier New', Courier, monospace;
+    color: var(--primary);
+    font-weight: 500;
+}
+
+.count {
+    text-align: right;
+    font-weight: 500;
+}
+
+.bar {
+    background: linear-gradient(90deg, var(--primary), #abab46);
+    height: 8px;
+    border-radius: 4px;
+    margin-top: 4px;
 }
