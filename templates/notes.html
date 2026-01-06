@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Notes</title>
+		<link href="/static/style.css" rel="stylesheet" type="text/css" media="all">
+	</head>
+	<body>
+		<section class="notes-page">
+			<div id="entries-container">
+				{% if notes %}
+					{% for note in notes %}
+						<div class="entry">
+							<p>{{ note }}</p>
+						</div>
+					{% endfor %}
+				{% else %}
+					<div class="empty">No notes found</div>
+				{% endif %}
+			</div>
+		</section>
+	</body>
+</html>

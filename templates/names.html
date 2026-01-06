@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Names</title>
+		<link href="/static/style.css" rel="stylesheet" type="text/css" media="all">
+	</head>
+	<body>
+		<section class="names-page">
+			<div id="names-container">
+				{% if names %}
+					<div class="names-list">
+						{% for name in names %}
+							<div class="name-item">
+								<p>{{ name }}</p>
+							</div>
+						{% endfor %}
+					</div>
+				{% else %}
+					<div class="empty">No names found</div>
+				{% endif %}
+			</div>
+		</section>
+	</body>
+</html>

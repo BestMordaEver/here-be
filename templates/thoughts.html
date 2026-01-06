@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Thoughts</title>
+		<link href="/static/style.css" rel="stylesheet" type="text/css" media="all">
+	</head>
+	<body>
+		<section class="thoughts-page">
+			<div id="name-display" class="name-header">Thoughts of {{ name }}</div>
+			<div id="entries-container">
+				{% if thoughts %}
+					{% for thought in thoughts %}
+						<div class="entry">
+							<p>{{ thought }}</p>
+						</div>
+					{% endfor %}
+				{% else %}
+					<div class="empty">No thoughts found</div>
+				{% endif %}
+			</div>
+		</section>
+	</body>
+</html>
