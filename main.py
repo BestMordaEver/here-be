@@ -1,5 +1,9 @@
 from flask import Flask, render_template, request, redirect
 from endpoints import api_bp
+from world import World
+from entities.settlement import Settlement
+from entities.caravan import Caravan
+from entities.dragon import Dragon
 from collections import defaultdict
 import json
 from datetime import datetime
@@ -12,6 +16,58 @@ from datetime import datetime
 
 app = Flask(__name__)
 
+world = World()
+app.world = world  # Make world accessible to blueprints
+
+
+def initialize_test_entities():
+    """Create test entities for debugging entity movement."""
+    # Create settlements in fields
+    settlements = [
+        Settlement("Millbrook", "#c0c0c0", "Ö", (50, 50), 100),
+        Settlement("Greenvale", "#c0c0c0", "Ö", (80, 60), 100),
+        Settlement("Riverside", "#c0c0c0", "Ö", (40, 90), 100),
+        Settlement("Crossroads", "#c0c0c0", "Ö", (120, 70), 100),
+    ]
+    
+    for settlement in settlements:
+        world.add_entity(settlement)
+    
+    # Create caravans that move between settlements
+    caravans = [
+        Caravan((48, 50), "trade", settlements[0], settlements[1]),  # Millbrook <-> Greenvale
+        Caravan((82, 62), "trade", settlements[1], settlements[2]),  # Greenvale <-> Riverside
+        Caravan((42, 88), "trade", settlements[2], settlements[3]),  # Riverside <-> Crossroads
+    ]
+    
+    # Set initial movement states
+    for caravan in caravans:
+        caravan.state = "moving"
+    
+    for caravan in caravans:
+        world.add_entity(caravan)
+    
+    # Create dragons in mountains that chase caravans
+    dragons = [
+        Dragon("Emberfang", ["brute", "mountain"], (150, 40)),
+        Dragon("Stormwing", ["blade", "mountain"], (160, 120)),
+        Dragon("Ashbreather", ["serpent", "mountain"], (180, 80)),
+    ]
+    
+    # Assign dragons to chase caravans in round trips
+    dragons[0].target = caravans[0]
+    dragons[1].target = caravans[1]
+    dragons[2].target = caravans[2]
+    
+    for dragon in dragons:
+        dragon.state = "moving"
+    
+    for dragon in dragons:
+        world.add_entity(dragon)
+
+
+# Initialize test entities
+initialize_test_entities()
 
 # Dictionary to store endpoint access statistics
 endpoint_stats = defaultdict(int)
@@ -38,8 +94,9 @@ def dragons():
 
 
 @app.get("/world")
-def world():
-    return render_template("world.html")
+def world_route():
+    height_map = world.height_map
+    return render_template("world.html", height_map=json.dumps(height_map))
 
 
 @app.get("/endpoints")

@@ -7,10 +7,14 @@
     <link rel="stylesheet" href="/static/world.css">
 </head>
 <body>
+    <div id="update-countdown"></div>
     <div class="world-container">
         <pre id="worldMap"></pre>
     </div>
     
+    <script>
+        const heightMap = {{ height_map | safe }};
+    </script>
     <script src="/static/world.js"></script>
 </body>
 </html>

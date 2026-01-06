@@ -1,4 +1,5 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, current_app
+import time
 
 
 api_bp = Blueprint("api", __name__)
@@ -31,3 +32,19 @@ def get_item(item_id: int):
             "timestamp": "2024-01-01T00:00:00Z",
         }
     )
+
+
+@api_bp.get("/api/world")
+def get_world():
+    """Get current world state including all entities."""
+    world = current_app.world
+    
+    # Force update check
+    world.update()
+    
+    return jsonify({
+        "entities": [entity.serialize() for entity in world.entities],
+        "update_count": world.update_count,
+        "timestamp": time.time(),
+        "next_update_in": world.get_next_update_time(),
+    })

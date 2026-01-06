@@ -10,6 +10,7 @@ body {
     font-family: 'Courier New', monospace;
     padding: 0.5rem;
     display: flex;
+    flex-direction: column;
     justify-content: flex-start;
     min-height: 100vh;
 }
@@ -17,6 +18,12 @@ body {
 h1 {
     margin-bottom: 2rem;
     color: #ffaa00;
+}
+
+#update-countdown {
+    margin-bottom: 1rem;
+    color: #ffaa00;
+    font-size: 14px;
 }
 
 .world-container {
@@ -33,6 +40,26 @@ pre {
     letter-spacing: 0;
     user-select: none;
     cursor: default;
+}
+
+span.terrain {
+    position: relative;
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    vertical-align: top;
+}
+
+span.terrain .char {
+    display: inline-block;
+}
+
+span.terrain .entity {
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-weight: bold;
+    z-index: 10;
 }
 
 .water {

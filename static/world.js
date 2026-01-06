@@ -10,6 +10,9 @@ const BIOME_CSS = {
     mountain: 'mountain'
 };
 
+// Store the rendered world as a 2D grid for entity overlay
+let worldGrid = [];
+
 // Get biome type based on height
 function getBiomeFromHeight(height) {
     if (height < 0.23) return 'water';
@@ -81,195 +84,35 @@ function getContextualTile(biome, height, heightMap, x, y) {
     return { char, cssClass: null };
 }
 
-// Perlin noise implementation
-class PerlinNoise {
-    constructor(seed = 0) {
-        this.permutation = [];
-        this.p = [];
-        this.initPermutation(seed);
-    }
-    
-    initPermutation(seed) {
-        for (let i = 0; i < 256; i++) {
-            this.permutation[i] = i;
-        }
-        
-        // Shuffle with seed
-        const random = this.seededRandom(seed);
-        for (let i = 255; i > 0; i--) {
-            const j = Math.floor(random() * (i + 1));
-            [this.permutation[i], this.permutation[j]] = [this.permutation[j], this.permutation[i]];
-        }
-        
-        // Duplicate permutation for wrapped access
-        this.p = [...this.permutation, ...this.permutation];
-    }
-    
-    seededRandom(seed) {
-        return () => {
-            seed = (seed * 9301 + 49297) % 233280;
-            return seed / 233280;
-        };
-    }
-    
-    fade(t) {
-        return t * t * t * (t * (t * 6 - 15) + 10);
-    }
-    
-    lerp(t, a, b) {
-        return a + t * (b - a);
-    }
-    
-    grad(hash, x, y) {
-        const h = hash & 15;
-        const u = h < 8 ? x : y;
-        const v = h < 8 ? y : x;
-        return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
-    }
-    
-    noise(x, y) {
-        const xi = Math.floor(x) & 255;
-        const yi = Math.floor(y) & 255;
-        
-        const xf = x - Math.floor(x);
-        const yf = y - Math.floor(y);
-        
-        const u = this.fade(xf);
-        const v = this.fade(yf);
-        
-        const aa = this.p[this.p[xi] + yi];
-        const ab = this.p[this.p[xi] + yi + 1];
-        const ba = this.p[this.p[xi + 1] + yi];
-        const bb = this.p[this.p[xi + 1] + yi + 1];
-        
-        const x1 = this.lerp(u, this.grad(aa, xf, yf), this.grad(ba, xf - 1, yf));
-        const x2 = this.lerp(u, this.grad(ab, xf, yf - 1), this.grad(bb, xf - 1, yf - 1));
-        
-        return this.lerp(v, x1, x2);
-    }
-}
-
-// Generate height map with Perlin noise
-function generateHeightMap() {
-    const perlin = new PerlinNoise(Math.random() * 1000);
-    const heightMap = [];
-    const scale = 0.09; // Controls feature size
-    
-    for (let y = 0; y < HEIGHT; y++) {
-        heightMap[y] = [];
-        for (let x = 0; x < WIDTH; x++) {
-            // Multi-octave Perlin noise for more varied terrain
-            let noise = 0;
-            let amplitude = 1;
-            let frequency = 1;
-            let maxValue = 0;
-            
-            for (let i = 0; i < 4; i++) {
-                noise += perlin.noise(x * scale * frequency, y * scale * frequency) * amplitude;
-                maxValue += amplitude;
-                amplitude *= 0.5;
-                frequency *= 2;
-            }
-            
-            // Normalize to roughly 0-1 range
-            heightMap[y][x] = (noise / maxValue + 1) / 2;
-        }
-    }
-    
-    // ===== SMOOTHING =====
-    let smoothed = [];
-    const iterations = 5;
-    
-    for (let iter = 0; iter < iterations; iter++) {
-        for (let y = 0; y < HEIGHT; y++) {
-            smoothed[y] = [];
-            for (let x = 0; x < WIDTH; x++) {
-                let sum = 0;
-                let count = 0;
-                
-                // Sample this tile and neighbors
-                for (let dy = -1; dy <= 1; dy++) {
-                    for (let dx = -1; dx <= 1; dx++) {
-                        const ny = y + dy;
-                        const nx = x + dx;
-                        
-                        if (ny >= 0 && ny < HEIGHT && nx >= 0 && nx < WIDTH) {
-                            sum += heightMap[ny][nx];
-                            count++;
-                        }
-                    }
-                }
-                
-                smoothed[y][x] = sum / count;
-            }
-        }
-    }
-    
-    // ===== NORMALIZATION =====
-    let min = Infinity;
-    let max = -Infinity;
-    
-    // Find min and max
-    for (let y = 0; y < HEIGHT; y++) {
-        for (let x = 0; x < WIDTH; x++) {
-            const val = smoothed[y][x];
-            if (val < min) min = val;
-            if (val > max) max = val;
-        }
-    }
-    
-    const range = max - min;
-    
-    // Normalize to 0-1
-    for (let y = 0; y < HEIGHT; y++) {
-        for (let x = 0; x < WIDTH; x++) {
-            smoothed[y][x] = (smoothed[y][x] - min) / range;
-        }
-    }
-	
-    return smoothed;
-}
-
 // Generate world based on height map
-function generateWorld() {
-    const heightMap = generateHeightMap();
+function generateWorld(heightMapInput) {
+    const heightMap = heightMapInput;
     const world = [];
+    const HEIGHT = heightMap.length;
+    const WIDTH = heightMap[0].length;
     
-    // Log heightmap statistics for debugging
-    let min = Infinity, max = -Infinity;
-    let waterCount = 0, fieldCount = 0, forestCount = 0, mountainCount = 0;
-    
-    for (let y = 0; y < HEIGHT; y++) {
-        for (let x = 0; x < WIDTH; x++) {
-            const height = heightMap[y][x];
-            if (height < min) min = height;
-            if (height > max) max = height;
-            
-            const biome = getBiomeFromHeight(height);
-            if (biome === 'water') waterCount++;
-            else if (biome === 'field') fieldCount++;
-            else if (biome === 'forest') forestCount++;
-            else mountainCount++;
-        }
-    }
-    
-    console.log('=== Height Map Statistics ===');
-    console.log(`Min height: ${min}`);
-    console.log(`Max height: ${max}`);
-    console.log(`Total tiles: ${WIDTH * HEIGHT}`);
-    console.log(`Water: ${waterCount} (${(waterCount / (WIDTH * HEIGHT) * 100).toFixed(2)}%)`);
-    console.log(`Fields: ${fieldCount} (${(fieldCount / (WIDTH * HEIGHT) * 100).toFixed(2)}%)`);
-    console.log(`Forests: ${forestCount} (${(forestCount / (WIDTH * HEIGHT) * 100).toFixed(2)}%)`);
-    console.log(`Mountains: ${mountainCount} (${(mountainCount / (WIDTH * HEIGHT) * 100).toFixed(2)}%)`);
+    // Initialize grid
+    worldGrid = [];
     
     for (let y = 0; y < HEIGHT; y++) {
+        worldGrid[y] = [];
         let row = '';
         for (let x = 0; x < WIDTH; x++) {
             const height = heightMap[y][x];
             const biome = getBiomeFromHeight(height);
             const tileData = getContextualTile(biome, height, heightMap, x, y);
             const cssClass = tileData.cssClass || BIOME_CSS[biome];
-            row += `<span class="${cssClass}">${tileData.char} </span>`;
+            const span = `<span class="terrain ${cssClass}" id="tile-${x}-${y}"><span class="char">${tileData.char}</span><span class="entity"></span></span>`;
+            row += span + ' ';
+            
+            // Store reference to this tile
+            worldGrid[y][x] = {
+                x: x,
+                y: y,
+                biome: biome,
+                height: height,
+                element: null
+            };
         }
         world.push(row);
     }
@@ -277,5 +120,75 @@ function generateWorld() {
     return world.join('\n');
 }
 
-// Render world
-document.getElementById('worldMap').innerHTML = generateWorld();
+// Fetch and render entities on the world map
+async function updateEntities() {
+    try {
+        const response = await fetch('/api/world');
+        const data = await response.json();
+        
+        // Clear all entities first
+        document.querySelectorAll('.entity').forEach(el => {
+            el.textContent = '';
+            el.style.color = '';
+        });
+        
+        // Render each entity
+        if (data.entities) {
+            data.entities.forEach(entity => {
+                const [x, y] = entity.coordinates;
+                
+                // Check bounds
+                if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
+                    const tile = document.getElementById(`tile-${x}-${y}`);
+                    if (tile) {
+                        const entitySpan = tile.querySelector('.entity');
+                        entitySpan.textContent = entity.character;
+                        entitySpan.style.color = entity.color;
+                        
+                        // Add title with entity info
+                        let title = `${entity.type}: ${entity.life}/${entity.life}`;
+                        if (entity.name) title = `${entity.name}: ${entity.life}`;
+                        if (entity.state) title += ` [${entity.state}]`;
+                        tile.title = title;
+                    }
+                }
+            });
+        }
+        
+        // Update next update time display
+        const nextUpdate = data.next_update_in || 10;
+        updateCountdown(nextUpdate);
+        
+    } catch (error) {
+        console.error('Failed to fetch world data:', error);
+    }
+}
+
+// Update countdown timer
+function updateCountdown(secondsUntilUpdate) {
+    const display = document.getElementById('update-countdown');
+    if (display) {
+        let remaining = secondsUntilUpdate;
+        display.textContent = `Next update in: ${remaining.toFixed(1)}s`;
+        
+        // Update countdown every 100ms
+        const interval = setInterval(() => {
+            remaining -= 0.1;
+            if (remaining <= 0) {
+                clearInterval(interval);
+                remaining = 10;
+            }
+            display.textContent = `Next update in: ${remaining.toFixed(1)}s`;
+        }, 100);
+        
+        // Clear old interval after 10 seconds
+        setTimeout(() => clearInterval(interval), 10000);
+    }
+}
+
+// Initial render
+document.getElementById('worldMap').innerHTML = generateWorld(heightMap);
+
+// Auto-update entities every 10 seconds
+updateEntities();
+setInterval(updateEntities, 10000);
