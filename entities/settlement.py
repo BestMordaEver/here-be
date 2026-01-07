@@ -9,12 +9,9 @@ class Settlement(Entity, Named, Thinking):
     def __init__(
         self,
         name: str,
-        color: str,
-        character: str,
         coordinates: Coordinates,
-        life: int,
     ):
-        Entity.__init__(self, color, character, coordinates, life)
+        Entity.__init__(self, "#4e2a00", "₼", coordinates, 1000)
         Named.__init__(self, name)
         Thinking.__init__(self)
 
@@ -25,4 +22,5 @@ class Settlement(Entity, Named, Thinking):
         """Serialize settlement to dictionary for JSON output."""
         data = super().serialize()
         data["name"] = self.name
+        data["debug_info"] = f"{self.name} at {self.coordinates}"
         return data
