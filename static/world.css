@@ -1,9 +1,3 @@
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
 body {
     background-color: #0a0a0a;
     color: #ffffff;
@@ -31,6 +25,12 @@ h1 {
     border: 2px solid #444444;
     padding: 1rem;
     border-radius: 4px;
+    display: inline-block;
+}
+
+canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
 }
 
 pre {
@@ -60,6 +60,20 @@ span.terrain .entity {
     top: 0;
     font-weight: bold;
     z-index: 10;
+    font-size: 115%;
+    text-shadow: 0 0 4px rgba(255, 255, 255, 0.9), 0 0 2px currentColor;
+    animation: entity-pulse 2s ease-in-out infinite;
+}
+
+@keyframes entity-pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.85;
+        transform: scale(1.05);
+    }
 }
 
 .water {

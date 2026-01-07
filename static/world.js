@@ -2,16 +2,28 @@
 const WIDTH = 200;
 const HEIGHT = 200;
 
-// Biome to CSS class mapping
-const BIOME_CSS = {
-    water: 'water',
-    field: 'field',
-    forest: 'forest',
-    mountain: 'mountain'
+// Character cell size in pixels
+const CELL_WIDTH = 9;
+const CELL_HEIGHT = 14;
+
+// Biome color mapping
+const BIOME_COLORS = {
+    water: { fg: '#4da6ff', bg: '#161664' },
+    field: { fg: '#6fcc50', bg: '#0d2d0d' },
+    forest: { fg: '#1a5f1a', bg: '#0a1a0a' },
+    mountain: { fg: '#ffffff', bg: '#2a2a2a' }
 };
 
-// Store the rendered world as a 2D grid for entity overlay
-let worldGrid = [];
+// Canvas references
+let terrainCanvas, terrainCtx;
+let entityCanvas, entityCtx;
+
+// Store entity data for hover detection
+let entityMap = new Map(); // key: "x,y", value: entity data
+
+// Animation frame tracking
+let pulsePhase = 0;
+let lastPulseTime = 0;
 
 // Get biome type based on height
 function getBiomeFromHeight(height) {
@@ -44,113 +56,153 @@ function isAdjacentTo(biome, heightMap, x, y) {
 
 // Get contextual tile character based on biome and local height
 function getContextualTile(biome, height, heightMap, x, y) {
-    let char;
-    
     if (biome === 'water') {
-        // Deep water (height < 0.1) uses ≈, shallow water (0.1-0.2) uses ~
-        if (height < 0.1) {
-            char = '≈';
-        } else {
-            char = '~';
-        }
+        return height < 0.1 ? '≈' : '~';
     } else if (biome === 'mountain') {
-        // Peaks use ^, slopes use А
-        if (height > 0.89) {
-            char = '^';
-        } else {
-            char = 'А';
-        }
+        return height > 0.89 ? '^' : 'А';
     } else if (biome === 'forest') {
-        // Dense forest (lower heights) use р/Р, sparse forest (higher) use ф/Ф
         if (height < 0.72) {
-            char = Math.random() < 0.5 ? 'р' : 'Р';
+            return Math.random() < 0.5 ? 'р' : 'Р';
         } else {
-            char = Math.random() < 0.5 ? 'ф' : 'Ф';
+            return Math.random() < 0.5 ? 'ф' : 'Ф';
         }
     } else if (biome === 'field') {
-        // Tall grass near forests and lakes
         if (isAdjacentTo('forest', heightMap, x, y)) {
-            char = ';';
+            return ';';
         } else {
-            // Height gradient for regular fields
-            if (height < 0.4) {
-                char = '.';
-            } else {
-                char = ',';
-            }
+            return height < 0.4 ? '.' : ',';
         }
     }
-    
-    return { char, cssClass: null };
+    return ' ';
 }
 
-// Generate world based on height map
-function generateWorld(heightMapInput) {
-    const heightMap = heightMapInput;
-    const world = [];
-    const HEIGHT = heightMap.length;
-    const WIDTH = heightMap[0].length;
+// Initialize canvases
+function initializeCanvases() {
+    terrainCanvas = document.getElementById('terrainCanvas');
+    entityCanvas = document.getElementById('entityCanvas');
     
-    // Initialize grid
-    worldGrid = [];
+    const canvasWidth = WIDTH * CELL_WIDTH;
+    const canvasHeight = HEIGHT * CELL_HEIGHT;
+    
+    // Set canvas dimensions
+    terrainCanvas.width = canvasWidth;
+    terrainCanvas.height = canvasHeight;
+    entityCanvas.width = canvasWidth;
+    entityCanvas.height = canvasHeight;
+    
+    terrainCtx = terrainCanvas.getContext('2d');
+    entityCtx = entityCanvas.getContext('2d');
+    
+    // Set font for both canvases
+    terrainCtx.font = '12px "Roboto", monospace';
+    entityCtx.font = 'bold 14px "Roboto", monospace';
+    
+    // Add mouse move handler for tooltips
+    terrainCanvas.addEventListener('mousemove', handleMouseMove);
+    terrainCanvas.addEventListener('mouseleave', hideTooltip);
+}
+
+// Render static terrain (only called once)
+function renderTerrain(heightMap) {
+    const startTime = performance.now();
     
     for (let y = 0; y < HEIGHT; y++) {
-        worldGrid[y] = [];
-        let row = '';
         for (let x = 0; x < WIDTH; x++) {
             const height = heightMap[y][x];
             const biome = getBiomeFromHeight(height);
-            const tileData = getContextualTile(biome, height, heightMap, x, y);
-            const cssClass = tileData.cssClass || BIOME_CSS[biome];
-            const span = `<span class="terrain ${cssClass}" id="tile-${x}-${y}"><span class="char">${tileData.char}</span><span class="entity"></span></span>`;
-            row += span + ' ';
+            const char = getContextualTile(biome, height, heightMap, x, y);
+            const colors = BIOME_COLORS[biome];
             
-            // Store reference to this tile
-            worldGrid[y][x] = {
-                x: x,
-                y: y,
-                biome: biome,
-                height: height,
-                element: null
-            };
+            const px = x * CELL_WIDTH;
+            const py = y * CELL_HEIGHT;
+            
+            // Draw background
+            terrainCtx.fillStyle = colors.bg;
+            terrainCtx.fillRect(px, py, CELL_WIDTH, CELL_HEIGHT);
+            
+            // Draw character
+            terrainCtx.fillStyle = colors.fg;
+            terrainCtx.fillText(char, px + 1, py + 11);
         }
-        world.push(row);
     }
     
-    return world.join('\n');
+    const endTime = performance.now();
+    console.log(`Terrain rendered in ${(endTime - startTime).toFixed(2)}ms`);
 }
 
-// Fetch and render entities on the world map
+// Update pulse animation phase
+function updatePulsePhase(timestamp) {
+    const elapsed = timestamp - lastPulseTime;
+    if (elapsed > 16) { // ~60fps
+        pulsePhase = (timestamp / 2000) % 1; // 2 second cycle
+        lastPulseTime = timestamp;
+    }
+}
+
+// Calculate pulse scale and opacity
+function getPulseEffect() {
+    // Sine wave from 0 to 1 and back
+    const t = Math.sin(pulsePhase * Math.PI * 2) * 0.5 + 0.5;
+    const opacity = 0.85 + (1 - 0.85) * (1 - t);
+    const scale = 1 + 0.05 * t;
+    return { opacity, scale };
+}
+
+// Render entities on entity canvas
+function renderEntities(timestamp) {
+    updatePulsePhase(timestamp);
+    
+    // Clear entity canvas
+    entityCtx.clearRect(0, 0, entityCanvas.width, entityCanvas.height);
+    
+    const pulse = getPulseEffect();
+    
+    entityMap.forEach((entity, key) => {
+        const [x, y] = entity.coordinates;
+        const px = x * CELL_WIDTH;
+        const py = y * CELL_HEIGHT;
+        
+        entityCtx.save();
+        
+        // Apply pulse transformation
+        entityCtx.globalAlpha = pulse.opacity;
+        entityCtx.translate(px + CELL_WIDTH / 2, py + CELL_HEIGHT / 2);
+        entityCtx.scale(pulse.scale, pulse.scale);
+        entityCtx.translate(-CELL_WIDTH / 2, -CELL_HEIGHT / 2);
+        
+        // Draw entity with glow effect
+        entityCtx.shadowColor = 'rgba(255, 255, 255, 0.9)';
+        entityCtx.shadowBlur = 4;
+        entityCtx.fillStyle = entity.color;
+        entityCtx.fillText(entity.character, 0, 11);
+        
+        // Draw again for color glow
+        entityCtx.shadowColor = entity.color;
+        entityCtx.shadowBlur = 2;
+        entityCtx.fillText(entity.character, 0, 11);
+        
+        entityCtx.restore();
+    });
+    
+    // Continue animation
+    requestAnimationFrame(renderEntities);
+}
+
+// Fetch and update entities
 async function updateEntities() {
+    const startTime = performance.now();
     try {
         const response = await fetch('/api/world');
         const data = await response.json();
         
-        // Clear all entities first
-        document.querySelectorAll('.entity').forEach(el => {
-            el.textContent = '';
-            el.style.color = '';
-        });
+        // Clear and rebuild entity map
+        entityMap.clear();
         
-        // Render each entity
         if (data.entities) {
             data.entities.forEach(entity => {
                 const [x, y] = entity.coordinates;
-                
-                // Check bounds
                 if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
-                    const tile = document.getElementById(`tile-${x}-${y}`);
-                    if (tile) {
-                        const entitySpan = tile.querySelector('.entity');
-                        entitySpan.textContent = entity.character;
-                        entitySpan.style.color = entity.color;
-                        
-                        // Add title with entity info
-                        let title = `${entity.type}: ${entity.life}/${entity.life}`;
-                        if (entity.name) title = `${entity.name}: ${entity.life}`;
-                        if (entity.state) title += ` [${entity.state}]`;
-                        tile.title = title;
-                    }
+                    entityMap.set(`${x},${y}`, entity);
                 }
             });
         }
@@ -159,9 +211,53 @@ async function updateEntities() {
         const nextUpdate = data.next_update_in || 10;
         updateCountdown(nextUpdate);
         
+        const endTime = performance.now();
+        console.log(`updateEntities completed in ${(endTime - startTime).toFixed(2)}ms (${entityMap.size} entities)`);
+        
     } catch (error) {
         console.error('Failed to fetch world data:', error);
     }
+}
+
+// Handle mouse movement for tooltips
+function handleMouseMove(event) {
+    const rect = terrainCanvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+    
+    const tileX = Math.floor(mouseX / CELL_WIDTH);
+    const tileY = Math.floor(mouseY / CELL_HEIGHT);
+    
+    if (tileX >= 0 && tileX < WIDTH && tileY >= 0 && tileY < HEIGHT) {
+        const key = `${tileX},${tileY}`;
+        const entity = entityMap.get(key);
+        
+        if (entity) {
+            showTooltip(event.clientX, event.clientY, entity);
+        } else {
+            hideTooltip();
+        }
+    } else {
+        hideTooltip();
+    }
+}
+
+// Show tooltip
+function showTooltip(x, y, entity) {
+    const tooltip = document.getElementById('tooltip');
+    text = entity.debug_info
+    
+    
+    tooltip.textContent = text;
+    tooltip.style.display = 'block';
+    tooltip.style.left = (x + 15) + 'px';
+    tooltip.style.top = (y + 15) + 'px';
+}
+
+// Hide tooltip
+function hideTooltip() {
+    const tooltip = document.getElementById('tooltip');
+    tooltip.style.display = 'none';
 }
 
 // Update countdown timer
@@ -171,24 +267,22 @@ function updateCountdown(secondsUntilUpdate) {
         let remaining = secondsUntilUpdate;
         display.textContent = `Next update in: ${remaining.toFixed(1)}s`;
         
-        // Update countdown every 100ms
         const interval = setInterval(() => {
             remaining -= 0.1;
             if (remaining <= 0) {
                 clearInterval(interval);
-                remaining = 10;
+                remaining = 1;
             }
             display.textContent = `Next update in: ${remaining.toFixed(1)}s`;
         }, 100);
         
-        // Clear old interval after 10 seconds
-        setTimeout(() => clearInterval(interval), 10000);
+        setTimeout(() => clearInterval(interval), 1000);
     }
 }
 
-// Initial render
-document.getElementById('worldMap').innerHTML = generateWorld(heightMap);
-
-// Auto-update entities every 10 seconds
+// Initialize and start
+initializeCanvases();
+renderTerrain(heightMap);
 updateEntities();
-setInterval(updateEntities, 10000);
+requestAnimationFrame(renderEntities);
+setInterval(updateEntities, 1000);
