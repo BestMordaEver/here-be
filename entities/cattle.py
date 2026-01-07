@@ -17,8 +17,6 @@ class Cattle(Mobile):
     
     def is_passable(self, coordinates: Coordinates, world) -> bool:
         """Check if a tile is passable (field or open area)."""
-        if not hasattr(world, 'height_map'):
-            return True  # If no height map, assume passable
         
         x, y = coordinates
         if x < 0 or y < 0 or x >= len(world.height_map[0]) or y >= len(world.height_map):
@@ -26,7 +24,7 @@ class Cattle(Mobile):
         
         height = world.height_map[y][x]
         
-        return height >= world.THRESHOLDS['water'] and height < world.THRESHOLDS['field']
+        return world.get_biome_from_height(height) == 'field'
     
     def choose_target(self, world) -> None:
         """Choose a target: near nearby settlement if within 10 units, else wander randomly."""
