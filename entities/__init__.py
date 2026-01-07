@@ -4,9 +4,6 @@ from entities.caravan import Caravan
 from entities.bandit import Bandit
 from entities.cattle import Cattle
 from entities.settlement import Settlement
-from entities.mountain import Mountain
-from entities.lake import Lake
-from entities.forest import Forest
 
 __all__ = [
     "Entity",
@@ -20,7 +17,4 @@ __all__ = [
     "Bandit",
     "Cattle",
     "Settlement",
-    "Mountain",
-    "Lake",
-    "Forest",
 ]

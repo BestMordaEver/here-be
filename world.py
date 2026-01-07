@@ -1,4 +1,5 @@
 import random
+import threading
 import time
 from typing import List
 
@@ -63,7 +64,7 @@ class World:
         
         # Entity management
         self.entities: List = []
-        self.update_interval = 10  # seconds
+        self.update_interval = 1  # seconds
         self.last_update_time = time.time()
         self.update_count = 0
 
@@ -180,9 +181,7 @@ class World:
     def should_update(self) -> bool:
         """Check if enough time has passed for an update."""
         current_time = time.time()
-        if current_time - self.last_update_time >= self.update_interval:
-            return True
-        return False
+        return current_time - self.last_update_time >= self.update_interval
     
     def update(self) -> None:
         """Update all entities and advance game state."""
@@ -201,3 +200,20 @@ class World:
         current_time = time.time()
         time_since_last = current_time - self.last_update_time
         return max(0, self.update_interval - time_since_last)
+
+    # Background world update thread
+    def update_loop(self) -> None:
+        """Continuously update the world in the background."""
+        while True:
+            try:
+                self.update()
+                # Sleep for a short time to avoid busy-waiting
+                time.sleep(0.5)  # Check for updates twice per second
+            except Exception as e:
+                print(f"Error in world update loop: {e}")
+                time.sleep(1)
+
+    def start_update_thread(self) -> None:
+        # Start background thread
+        update_thread = threading.Thread(target=self.update_loop, daemon=True)
+        update_thread.start()
