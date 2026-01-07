@@ -1,5 +1,5 @@
 import json
-from flask import Blueprint, app, render_template
+from flask import Blueprint, current_app, render_template
 
 
 endpoints_bp = Blueprint("endpoints", __name__)
@@ -17,14 +17,14 @@ def dragons():
 
 @endpoints_bp.get("/world")
 def world_route():
-    height_map = app.world.height_map
+    height_map = current_app.world.height_map
     return render_template("world.html", height_map=json.dumps(height_map))
 
 
 @endpoints_bp.get("/endpoints")
 def endpoints():
     # Convert defaultdict to regular dict and sort by access count
-    sorted_stats = sorted(app.endpoint_stats.items(), key=lambda x: x[1], reverse=True)
+    sorted_stats = sorted(current_app.endpoint_stats.items(), key=lambda x: x[1], reverse=True)
     return render_template("endpoints.html", endpoint_stats=sorted_stats)
 
 
