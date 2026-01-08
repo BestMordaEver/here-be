@@ -29,6 +29,7 @@
     </div>
     <div class="world-container">
         <div id="canvasContainer">
+            <canvas id="backgroundCanvas"></canvas>
             <canvas id="terrainCanvas"></canvas>
             <canvas id="entityCanvas"></canvas>
         </div>
@@ -38,6 +39,6 @@
     <script>
         const heightMap = {{ height_map | safe }};
     </script>
-    <script src="/static/world.js"></script>
+    <script type="module" src="/static/world/world.js"></script>
 </body>
 </html>
