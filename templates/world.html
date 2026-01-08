@@ -7,13 +7,32 @@
     <link rel="stylesheet" href="/static/world.css">
 </head>
 <body>
-    <div id="update-countdown"></div>
-    <div class="world-container">
-        <div id="canvasContainer" style="position: relative; display: inline-block;">
-            <canvas id="terrainCanvas"></canvas>
-            <canvas id="entityCanvas" style="position: absolute; left: 0; top: 0; pointer-events: none;"></canvas>
+    <div class="accessibility-menu">
+        <div id="menuToggle">▼</div>
+        <div id="menuContent">
+            <label>
+                <input type="checkbox" id="toggleTerrainChars" checked> Terrain Characters
+            </label>
+            <label>
+                <input type="checkbox" id="toggleTerrainBg" checked> Terrain Background
+            </label>
+            <label>
+                <input type="checkbox" id="toggleEntityGlow" checked> Entity Glow
+            </label>
+            <label>
+                <input type="checkbox" id="toggleEntityAnimation" checked> Entity Animation
+            </label>
+            <label>
+                <input type="checkbox" id="toggleEntities" checked> Show Entities
+            </label>
         </div>
-        <div id="tooltip" style="position: fixed; background: rgba(0,0,0,0.9); color: #ffaa00; padding: 4px 8px; border: 1px solid #444; border-radius: 3px; font-size: 12px; pointer-events: none; display: none; z-index: 1000;"></div>
+    </div>
+    <div class="world-container">
+        <div id="canvasContainer">
+            <canvas id="terrainCanvas"></canvas>
+            <canvas id="entityCanvas"></canvas>
+        </div>
+        <div id="tooltip"></div>
     </div>
     
     <script>

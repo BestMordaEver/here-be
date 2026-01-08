@@ -7,6 +7,74 @@ body {
     flex-direction: column;
     justify-content: flex-start;
     min-height: 100vh;
+    user-select: none;
+    cursor: default;
+}
+
+* {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+.accessibility-menu {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.9);
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 10px;
+    font-size: 12px;
+    z-index: 2000;
+}
+
+#menuToggle {
+    color: #ffaa00;
+    font-weight: bold;
+    cursor: pointer;
+    user-select: none;
+}
+
+#menuContent {
+    display: none;
+    margin-top: 8px;
+}
+
+#menuContent label {
+    display: block;
+    margin-bottom: 4px;
+    cursor: pointer;
+}
+
+#menuContent label:last-child {
+    margin-bottom: 0;
+}
+
+#canvasContainer {
+    position: relative;
+    display: inline-block;
+}
+
+#entityCanvas {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+}
+
+#tooltip {
+    position: fixed;
+    background: rgba(0, 0, 0, 0.9);
+    color: #ffaa00;
+    padding: 4px 8px;
+    border: 1px solid #444;
+    border-radius: 3px;
+    font-size: 12px;
+    pointer-events: none;
+    display: none;
+    z-index: 1000;
 }
 
 h1 {
@@ -22,9 +90,7 @@ h1 {
 
 .world-container {
     background-color: #0a0a0a;
-    border: 2px solid #444444;
     padding: 1rem;
-    border-radius: 4px;
     display: inline-block;
 }
 

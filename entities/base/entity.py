@@ -32,7 +32,7 @@ class Entity:
     def heal(self, amount: int) -> None:
         self.life += amount
 
-    def die(self, world) -> None:
+    def die(self, world, reason) -> None:
         self.is_dead = True
         self.is_alive = False
     

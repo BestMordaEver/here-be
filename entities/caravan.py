@@ -1,10 +1,8 @@
 from entities.base.mobile import Mobile
 from entities.base.entity import Coordinates
 from entities.base.thinking import Thinking
+from entities.base.settlement import Settlement
 from typing import TYPE_CHECKING, Dict, Any
-
-if TYPE_CHECKING:
-    from entities.settlement import Settlement
 
 
 class Caravan(Mobile, Thinking):
@@ -12,28 +10,44 @@ class Caravan(Mobile, Thinking):
     def __init__(
         self,
         coordinates: Coordinates,
-        home: "Settlement",
-        destination: "Settlement",
+        destination: "Settlement | Coordinates",
+        intent: str,
     ):
         Mobile.__init__(self, "#2b1c00", '@', coordinates, 50, destination)
-        Thinking.__init__(self)
+        Thinking.__init__(self, intent)
         self.loiter = 4
-        self.home = home
-        self.current_target: Coordinates = destination.coordinates
+        self.current_target: Coordinates = destination.coordinates if hasattr(destination, "coordinates") else destination
         self.path: list[Coordinates] = []
+    
+    def die(self, world, reason):
+        super().die(world)
 
     def is_passable(self, coordinates, world):
-        
+        """Check if a tile is passable (field, not through settlements)."""
         x, y = coordinates
         if x < 0 or y < 0 or x >= len(world.height_map[0]) or y >= len(world.height_map):
             return False  # Out of bounds
         
         height = world.height_map[coordinates[1]][coordinates[0]]
-        return world.get_biome_from_height(height) == 'field'
+        if world.get_biome_from_height(height) != 'field':
+            return False
+        
+        for entity in world.entities if hasattr(world, 'entities') else []:
+            if isinstance(entity, Settlement) and entity.occupies(coordinates):
+                return False
+        
+        return True
     
     def is_nearby_target(self, world) -> bool:
         """Check if caravan is nearby its current destination."""
-        return self.get_distance(self.current_target) <= 2
+        if self.intent == "trade":
+            if self.destination.__class__.__name__ == "Camp":
+                return self.get_distance(self.current_target) <= 2
+            elif self.destination.__class__.__name__ == "Village":
+                return self.get_distance(self.current_target) <= 3
+            return self.get_distance(self.current_target) <= 5
+        else:
+            return self.coordinates == self.current_target
     
     def approach_target(self, world) -> None:
         """Move one step along the path to the destination."""
@@ -51,39 +65,31 @@ class Caravan(Mobile, Thinking):
 
         # Movement processed by Mobile
         super().update(world)
-        if self.is_nearby_target(world):
+        if self.state == "moving" and self.is_nearby_target(world):
             self.state = "arrived"
 
         if self.state == "created":
             self.state = "moving"
             self.current_target = self.destination.coordinates
         elif self.state == "arrived":
-            if self.destination == self.home:
-                if self.destination.is_alive:
-                    self.state = "collected"
-                else:
-                    self.state = "fleeing"  # Dead home, find new home
-                
-                    closest_settlement: Settlement = None
-                    closest_distance = float('inf')
-
-                    for entity in world.entities:
-                        if isinstance(entity, Settlement) and entity != self.home and entity.is_alive:
-                            distance = self.get_distance(entity.coordinates)
-                            if distance < closest_distance:
-                                closest_distance = distance
-                                closest_settlement = entity
-
-                    if closest_settlement:
-                        self.current_target = closest_settlement.coordinates
-            else:
-                if self.destination.is_alive:
-                    self.state = "idle"
+            if self.destination.is_alive:
+                    self.state = "trading"
                     self.loiter_counter = 40
-                else:
-                    # Destination is dead, return home
-                    self.current_target = self.home.coordinates
-                    self.state = "moving"
+            else:
+                self.state = "fleeing"  # Dead target, flee
+            
+                closest_settlement: Settlement = None
+                closest_distance = float('inf')
+
+                for entity in world.entities:
+                    if isinstance(entity, Settlement) and entity.is_alive:
+                        distance = self.get_distance(entity.coordinates)
+                        if distance < closest_distance:
+                            closest_distance = distance
+                            closest_settlement = entity
+
+                if closest_settlement:
+                    self.current_target = closest_settlement.coordinates
 
         elif self.state == "fleeing":
             self.life -= 1
@@ -91,12 +97,11 @@ class Caravan(Mobile, Thinking):
             super().update(world)
             if self.state != "arrived":
                 self.state = "fleeing"
-        elif self.state == "idle":
+        elif self.state == "trading":
             if self.loiter_counter > 0:
                 self.loiter_counter -= 1
             else:
-                self.state = "moving"
-                self.current_target = self.home.coordinates
+                self.die(world, "success")
 
     def serialize(self) -> Dict[str, Any]:
         """Serialize caravan to dictionary for JSON output."""

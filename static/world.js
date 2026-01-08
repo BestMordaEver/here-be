@@ -25,6 +25,15 @@ let entityMap = new Map(); // key: "x,y", value: entity data
 let pulsePhase = 0;
 let lastPulseTime = 0;
 
+// Display options
+const displayOptions = {
+    terrainChars: true,
+    terrainBg: true,
+    entityGlow: true,
+    entityAnimation: true,
+    showEntities: true
+};
+
 // Get biome type based on height
 function getBiomeFromHeight(height) {
     if (height < 0.23) return 'water';
@@ -117,12 +126,18 @@ function renderTerrain(heightMap) {
             const py = y * CELL_HEIGHT;
             
             // Draw background
-            terrainCtx.fillStyle = colors.bg;
-            terrainCtx.fillRect(px, py, CELL_WIDTH, CELL_HEIGHT);
+            if (displayOptions.terrainBg) {
+                terrainCtx.fillStyle = colors.bg;
+                terrainCtx.fillRect(px, py, CELL_WIDTH, CELL_HEIGHT);
+            } else {
+                terrainCtx.clearRect(px, py, CELL_WIDTH, CELL_HEIGHT);
+            }
             
             // Draw character
-            terrainCtx.fillStyle = colors.fg;
-            terrainCtx.fillText(char, px + 1, py + 11);
+            if (displayOptions.terrainChars) {
+                terrainCtx.fillStyle = colors.fg;
+                terrainCtx.fillText(char, px + 1, py + 11);
+            }
         }
     }
     
@@ -143,8 +158,8 @@ function updatePulsePhase(timestamp) {
 function getPulseEffect() {
     // Sine wave from 0 to 1 and back
     const t = Math.sin(pulsePhase * Math.PI * 2) * 0.5 + 0.5;
-    const opacity = 0.85 + (1 - 0.85) * (1 - t);
-    const scale = 1 + 0.05 * t;
+    const opacity = 0.95 + (1 - 0.95) * (1 - t);
+    const scale = 1 + 0.015 * t;
     return { opacity, scale };
 }
 
@@ -162,24 +177,44 @@ function renderEntities(timestamp) {
         const px = x * CELL_WIDTH;
         const py = y * CELL_HEIGHT;
         
+        // Skip entity rendering if disabled - don't clear terrain
+        if (!displayOptions.showEntities) return;
+        
+        // Clear the terrain character at this position (keeping background)
+        terrainCtx.clearRect(px, py, CELL_WIDTH, CELL_HEIGHT);
+        // Restore just the background color
+        const height = heightMap[y][x];
+        const biome = getBiomeFromHeight(height);
+        const colors = BIOME_COLORS[biome];
+        if (displayOptions.terrainBg) {
+            terrainCtx.fillStyle = colors.bg;
+            terrainCtx.fillRect(px, py, CELL_WIDTH, CELL_HEIGHT);
+        }
+        
         entityCtx.save();
         
-        // Apply pulse transformation
-        entityCtx.globalAlpha = pulse.opacity;
-        entityCtx.translate(px + CELL_WIDTH / 2, py + CELL_HEIGHT / 2);
-        entityCtx.scale(pulse.scale, pulse.scale);
-        entityCtx.translate(-CELL_WIDTH / 2, -CELL_HEIGHT / 2);
+        // Apply pulse transformation only if animation is enabled
+        if (displayOptions.entityAnimation) {
+            entityCtx.globalAlpha = pulse.opacity;
+            entityCtx.translate(px + CELL_WIDTH / 2, py + CELL_HEIGHT / 2);
+            entityCtx.scale(pulse.scale, pulse.scale);
+            entityCtx.translate(-CELL_WIDTH / 2, -CELL_HEIGHT / 2);
+        }
         
-        // Draw entity with glow effect
-        entityCtx.shadowColor = 'rgba(255, 255, 255, 0.9)';
-        entityCtx.shadowBlur = 4;
+        // Draw entity with optional glow effect
+        if (displayOptions.entityGlow) {
+            entityCtx.shadowColor = 'rgba(255, 255, 255, 0.4)';
+            entityCtx.shadowBlur = 2;
+        }
         entityCtx.fillStyle = entity.color;
-        entityCtx.fillText(entity.character, 0, 11);
+        entityCtx.fillText(entity.character, displayOptions.entityAnimation ? 0 : px + 1, displayOptions.entityAnimation ? 11 : py + 11);
         
         // Draw again for color glow
-        entityCtx.shadowColor = entity.color;
-        entityCtx.shadowBlur = 2;
-        entityCtx.fillText(entity.character, 0, 11);
+        if (displayOptions.entityGlow) {
+            entityCtx.shadowColor = entity.color;
+            entityCtx.shadowBlur = 1;
+            entityCtx.fillText(entity.character, displayOptions.entityAnimation ? 0 : px + 1, displayOptions.entityAnimation ? 11 : py + 11);
+        }
         
         entityCtx.restore();
     });
@@ -200,19 +235,33 @@ async function updateEntities() {
         
         if (data.entities) {
             data.entities.forEach(entity => {
-                const [x, y] = entity.coordinates;
-                if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
-                    entityMap.set(`${x},${y}`, entity);
+                // Check if entity has tiles (multi-tile entity like settlements)
+                if (entity.tiles && Array.isArray(entity.tiles)) {
+                    // Add each tile of the settlement
+                    entity.tiles.forEach(tile => {
+                        const [coords, symbol, color] = tile;
+                        const [x, y] = coords;
+                        if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
+                            entityMap.set(`${x},${y}`, {
+                                ...entity,
+                                coordinates: coords,
+                                character: symbol,
+                                color: color
+                            });
+                        }
+                    });
+                } else {
+                    // Regular single-tile entity
+                    const [x, y] = entity.coordinates;
+                    if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
+                        entityMap.set(`${x},${y}`, entity);
+                    }
                 }
             });
         }
         
-        // Update next update time display
-        const nextUpdate = data.next_update_in || 10;
-        updateCountdown(nextUpdate);
-        
         const endTime = performance.now();
-        console.log(`updateEntities completed in ${(endTime - startTime).toFixed(2)}ms (${entityMap.size} entities)`);
+        console.log(`updateEntities completed in ${(endTime - startTime).toFixed(2)}ms (${entityMap.size} tiles)`);
         
     } catch (error) {
         console.error('Failed to fetch world data:', error);
@@ -260,28 +309,47 @@ function hideTooltip() {
     tooltip.style.display = 'none';
 }
 
-// Update countdown timer
-function updateCountdown(secondsUntilUpdate) {
-    const display = document.getElementById('update-countdown');
-    if (display) {
-        let remaining = secondsUntilUpdate;
-        display.textContent = `Next update in: ${remaining.toFixed(1)}s`;
-        
-        const interval = setInterval(() => {
-            remaining -= 0.1;
-            if (remaining <= 0) {
-                clearInterval(interval);
-                remaining = 1;
-            }
-            display.textContent = `Next update in: ${remaining.toFixed(1)}s`;
-        }, 100);
-        
-        setTimeout(() => clearInterval(interval), 1000);
-    }
+// Setup display option toggles
+function setupDisplayToggles() {
+    // Toggle menu visibility
+    const menuToggle = document.getElementById('menuToggle');
+    const menuContent = document.getElementById('menuContent');
+    menuToggle.addEventListener('click', () => {
+        const isHidden = menuContent.style.display === 'none';
+        menuContent.style.display = isHidden ? 'block' : 'none';
+        menuToggle.textContent = isHidden ? '▲' : '▼';
+    });
+    
+    document.getElementById('toggleTerrainChars').addEventListener('change', (e) => {
+        displayOptions.terrainChars = e.target.checked;
+        renderTerrain(heightMap);
+    });
+    
+    document.getElementById('toggleTerrainBg').addEventListener('change', (e) => {
+        displayOptions.terrainBg = e.target.checked;
+        renderTerrain(heightMap);
+    });
+    
+    document.getElementById('toggleEntityGlow').addEventListener('change', (e) => {
+        displayOptions.entityGlow = e.target.checked;
+    });
+    
+    document.getElementById('toggleEntityAnimation').addEventListener('change', (e) => {
+        displayOptions.entityAnimation = e.target.checked;
+    });
+    
+    document.getElementById('toggleEntities').addEventListener('change', (e) => {
+        displayOptions.showEntities = e.target.checked;
+        // Re-render terrain to restore characters under entities when hiding them
+        if (!e.target.checked) {
+            renderTerrain(heightMap);
+        }
+    });
 }
 
 // Initialize and start
 initializeCanvases();
+setupDisplayToggles();
 renderTerrain(heightMap);
 updateEntities();
 requestAnimationFrame(renderEntities);

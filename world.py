@@ -191,9 +191,12 @@ class World:
         self.last_update_time = time.time()
         self.update_count += 1
         
-        # Update all entities
         for entity in self.entities:
             entity.update(self)
+            # Check for dead camps
+            if hasattr(entity, 'settlement_type') and entity.settlement_type == 'worker_camp':
+                if entity.is_dead:
+                    self.remove_entity(entity)
     
     def get_next_update_time(self) -> float:
         """Get seconds until next update."""
