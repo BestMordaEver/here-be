@@ -58,37 +58,33 @@ export function renderEntities(timestamp) {
         
         entityCtx.save();
         
+        // Translate to center of cell for all transformations
+        entityCtx.translate(px + CELL_WIDTH / 2, py + CELL_HEIGHT / 2);
+        
         // Apply rotation if entity has rotation property
         if (entity.rotation !== undefined) {
             const radians = (entity.rotation * Math.PI) / 180;
-            entityCtx.translate(px + CELL_WIDTH / 2, py + CELL_HEIGHT / 2);
             entityCtx.rotate(radians);
-            entityCtx.translate(-CELL_WIDTH / 2, -CELL_HEIGHT / 2);
         }
         
+        // Apply pulse scale if animation is enabled
         if (displayOptions.entityAnimation) {
             entityCtx.globalAlpha = pulse.opacity;
-            if (entity.rotation === undefined) {
-                // Only apply pulse transform if not already transformed by rotation
-                entityCtx.translate(px + CELL_WIDTH / 2, py + CELL_HEIGHT / 2);
-            }
             entityCtx.scale(pulse.scale, pulse.scale);
-            if (entity.rotation === undefined) {
-                entityCtx.translate(-CELL_WIDTH / 2, -CELL_HEIGHT / 2);
-            }
         }
         
+        // Draw at origin (which is now the center of the cell)
         if (displayOptions.entityGlow) {
             entityCtx.shadowColor = 'rgba(255, 255, 255, 0.4)';
             entityCtx.shadowBlur = 2;
         }
         entityCtx.fillStyle = entity.color;
-        entityCtx.fillText(entity.character, displayOptions.entityAnimation ? 0 : px + CELL_WIDTH * 0.5, displayOptions.entityAnimation ? CELL_HEIGHT : py + CELL_HEIGHT);
+        entityCtx.fillText(entity.character, -CELL_WIDTH * 0.4, CELL_HEIGHT * 0.35);
         
         if (displayOptions.entityGlow) {
             entityCtx.shadowColor = entity.color;
             entityCtx.shadowBlur = 1;
-            entityCtx.fillText(entity.character, displayOptions.entityAnimation ? 0 : px + CELL_WIDTH * 0.5, displayOptions.entityAnimation ? CELL_HEIGHT : py + CELL_HEIGHT);
+            entityCtx.fillText(entity.character, -CELL_WIDTH * 0.4, CELL_HEIGHT * 0.35);
         }
         
         entityCtx.restore();
