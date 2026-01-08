@@ -65,7 +65,7 @@ app.endpoint_stats = endpoint_stats
 @app.before_request
 def log_endpoint_access():
     # Exclude static files
-    if not request.path.startswith('/static/'):
+    if not (request.path.startswith('/static/') or request.path.startswith('/api/')):
         endpoint_stats[request.path] += 1
 
 

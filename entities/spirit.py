@@ -1,5 +1,5 @@
 """Spirit base class - stationary entities with domain areas."""
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Tuple
 from entities.base.entity import Entity, Coordinates
 
 
@@ -20,12 +20,14 @@ class Spirit(Entity):
         coordinates: Coordinates,
         life: int,
         domain_area: int,
+        domain_tiles: List[Tuple[int, int]] = None,
     ):
         super().__init__("", "", coordinates, life)
         self.type = type    # forest, water, mountain
         self.domain_area = domain_area
         self.max_life = life
         self.attending_dragons: list["Dragon"] = []
+        self.domain_tiles = domain_tiles if domain_tiles is not None else []
     
     def life_depletion_on_use(self, amount: int) -> None:
         """Deplete life when the spirit is used/exploited."""
@@ -54,6 +56,18 @@ class Spirit(Entity):
         
         if not self.attending_dragons:
             self.natural_recovery()
+    
+    def serialize(self):
+        """Serialize spirit to dictionary for JSON output."""
+        base = super().serialize()
+        base.update({
+            "type": self.type,
+            "life": self.life,
+            "max_life": self.max_life,
+            "domain_area": self.domain_area,
+            "domain_tiles": self.domain_tiles,
+        })
+        return base
     
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(life={self.life}/{self.max_life}, domain={self.domain_area})"
