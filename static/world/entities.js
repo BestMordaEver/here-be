@@ -58,11 +58,24 @@ export function renderEntities(timestamp) {
         
         entityCtx.save();
         
+        // Apply rotation if entity has rotation property
+        if (entity.rotation !== undefined) {
+            const radians = (entity.rotation * Math.PI) / 180;
+            entityCtx.translate(px + CELL_WIDTH / 2, py + CELL_HEIGHT / 2);
+            entityCtx.rotate(radians);
+            entityCtx.translate(-CELL_WIDTH / 2, -CELL_HEIGHT / 2);
+        }
+        
         if (displayOptions.entityAnimation) {
             entityCtx.globalAlpha = pulse.opacity;
-            entityCtx.translate(px + CELL_WIDTH / 2, py + CELL_HEIGHT / 2);
+            if (entity.rotation === undefined) {
+                // Only apply pulse transform if not already transformed by rotation
+                entityCtx.translate(px + CELL_WIDTH / 2, py + CELL_HEIGHT / 2);
+            }
             entityCtx.scale(pulse.scale, pulse.scale);
-            entityCtx.translate(-CELL_WIDTH / 2, -CELL_HEIGHT / 2);
+            if (entity.rotation === undefined) {
+                entityCtx.translate(-CELL_WIDTH / 2, -CELL_HEIGHT / 2);
+            }
         }
         
         if (displayOptions.entityGlow) {

@@ -1,3 +1,4 @@
+from math import atan2, degrees
 from random import randint
 from typing import TYPE_CHECKING, Dict, Any
 from entities.base.mobile import Mobile
@@ -20,14 +21,25 @@ class Dragon(Mobile, Named, Thinking):
         coordinates: Coordinates,
     ):
         if "serpent" in properties:
-            char = '$'
+            chars = ['Ȿ', 'Ɀ']
             self.type = "serpent"
+            base_rotation = 270  # faces up
         elif "brute" in properties:
-            char = "&"
+            chars = ['&', 'Ֆ']
             self.type = "brute"
+            base_rotation = 270  # faces left up
         elif "blade" in properties:
-            char = '%'
+            chars = ['%', '÷']
             self.type = "blade"
+            base_rotation = 315  # faces right up
+        elif "druid" in properties:
+            chars = ['₷', '₻']
+            self.type = "druid"
+            base_rotation = 315  # faces right up
+        elif "midas" in properties:
+            chars = ['ꬸ', 'ꬷ']
+            self.type = "midas"
+            base_rotation = 270  # faces up
         
         if "aquatic" in properties:
             color = "#004080"
@@ -43,11 +55,13 @@ class Dragon(Mobile, Named, Thinking):
             self.domain = "flame"
 
 
-        Mobile.__init__(self, color, char, coordinates, 500)
+        Mobile.__init__(self, color, chars[0], coordinates, 500)
         Named.__init__(self, name)
         Thinking.__init__(self)
         self.loiter = 0
         self.move_error = 0.0  # Track error for line approximation
+        self.base_rotation = base_rotation
+        self.rotation = base_rotation  # Current rotation angle in degrees
     
     def choose_target(self, world) -> None:
         pass
@@ -110,6 +124,12 @@ class Dragon(Mobile, Named, Thinking):
                     dx = 1 if dx_full > 0 else -1
                     self.move_error -= 1.0
         
+        # Calculate movement heading (0° = right, 90° = down, 180° = left, 270° = up)
+        if dx != 0 or dy != 0:
+            heading = degrees(atan2(dy, dx))  # atan2 gives angle from positive x-axis
+            # Calculate rotation needed to point from base direction to heading
+            self.rotation = heading - self.base_rotation
+        
         # Move
         self.move_to((self.coordinates[0] + dx, self.coordinates[1] + dy), self.type == "blade")
     
@@ -127,6 +147,7 @@ class Dragon(Mobile, Named, Thinking):
         data["name"] = self.name
         data["type"] = self.type
         data["domain"] = self.domain
+        data["rotation"] = self.rotation
         data["target"] = self.target.name if hasattr(self.target, 'name') else self.target.coordinates
-        data["debug_info"] = f"{self.name} at {self.coordinates} targeting {data['target']}\nstate {self.state}, loiter {self.loiter}, loiter_counter {self.loiter_counter}"
+        data["debug_info"] = f"{self.name} type {self.type} rotation {self.rotation:.1f}°"
         return data
