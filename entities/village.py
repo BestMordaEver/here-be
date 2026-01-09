@@ -56,3 +56,37 @@ class Village(Settlement):
         city = City(self.name, self.coordinates)
         city.life = self.life
         return city
+    
+    def generate_resources(self, world) -> None:
+        """Generate food resources each cycle.
+        - Base: 3 food
+        - +3 food for each cattle within 10 tiles
+        - +1 food for each water tile in a spirit's domain within 10 tiles
+        """
+        if self.is_dead:
+            return
+        
+        food_generated = 3  # Base food generation
+        
+        x, y = self.coordinates
+        
+        # Check for cattle within 10 tiles (Manhattan distance)
+        for entity in world.entities:
+            if hasattr(entity, '__class__') and entity.__class__.__name__ == 'Cattle':
+                ex, ey = entity.coordinates
+                distance = abs(x - ex) + abs(y - ey)
+                if distance <= 10:
+                    food_generated += 3
+        
+        # Check for water tiles within spirit domains within 10 tiles
+        for entity in world.entities:
+            if hasattr(entity, '__class__') and entity.__class__.__name__ == 'Spirit':
+                if entity.type == 'water' and hasattr(entity, 'domain_tiles'):
+                    # Count water tiles in spirit domain that are within 10 tiles
+                    for tile_x, tile_y in entity.domain_tiles:
+                        distance = abs(x - tile_x) + abs(y - tile_y)
+                        if distance <= 10:
+                            food_generated += 1
+        
+        # Add generated food to storage (capped by capacity)
+        self.add_resource('food', food_generated)

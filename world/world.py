@@ -2,8 +2,7 @@ import random
 import threading
 import time
 from typing import List
-from world import HeightMapGenerator
-from world.entity_gen import generate_spirits
+from world import HeightMapGenerator, attempt_spawn_village, generate_spirits
 
 class World:
 
@@ -30,6 +29,10 @@ class World:
         
         # Generate spirits after heightmap is ready
         generate_spirits(self)
+        
+        # Generate initial villages
+        for _ in range(5):
+            attempt_spawn_village(self)
 
     @staticmethod
     def get_biome_from_height(height):
@@ -68,6 +71,11 @@ class World:
         
         self.last_update_time = time.time()
         self.update_count += 1
+        
+        # Periodic village spawning every 200 cycles
+        if self.update_count % 200 == 0:
+            for _ in range(5):
+                attempt_spawn_village(self)
         
         for entity in self.entities:
             entity.update(self)

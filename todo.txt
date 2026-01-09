@@ -1,0 +1,89 @@
+❌ not done, ➕ done, 〰 partially done
+
+# Map 〰
+- generate terrain ➕
+- generate the city, two villages and the spire ❌
+- generate spirits ❌
+- pretty 〰
+- accessibility ❌
+
+# Mobile entities ➕
+- movement logic ➕
+- diagonal movement penalty ➕
+- pathfinding ➕
+
+# Thinking entities ❌
+- action thoughts ❌
+- intent thoughts ❌
+- idle thoughts ❌
+
+# Entity types 〰
+- spirits and cattle 〰
+* spirits instantly spawn during generation ❌
+* cattle spawn periodically (how often? threshold?) ❌
+* cattle wander randomly until tamed ➕
+
+- settlements 〰
+* villages and cities send out worker caravans when they have excess food ❌
+* settlements trade off excess ❌
+* settlements consume food ❌
+* settlements start to starve if they don't have food ❌
+* worker camps produce wood or ores ❌
+* villages produce food ❌
+* villages produce more food if in proximity of cattle or water spirit ❌
+* villages can evolve to cities if they have excess wood and some ores ❌
+* villages and cities consume wood ❌
+* villages and cities start to fall into disrepair if they don't have wood ❌
+* cities consume ores ❌
+* cities start to fall into disrepair if they don't have ores ❌
+* cities produce valuables when they have excess ores ❌
+* cities periodically spawn heroes when they have excess ores ❌
+* cities spawn spires when they reach a valuables threshold ❌
+* ruined cities and villages produce a single bandit pack ❌
+* ruined worker camps disappear ➕
+
+- spire ❌
+* enable users to summon dragons ❌
+* consume ores and valuables ❌
+* start to fall into disrepair if doesn't have ores or valuables ❌
+
+- caravans 〰
+* if sent to trade - approach the settlement and loiter until done trading 〰
+* if sent to settle - approach the point and create camp ❌
+
+- bandits ❌
+* hide in forests ❌
+* consume food ❌
+* attack nearby caravans when in mood ❌
+* attack nearby villages when low on food ❌
+
+- heroes ❌
+* heal in cities and villages ❌
+* protect caravans ❌
+* rush to protect nearby villages and cities if they are attacked ❌
+* create parties of 3-5 heroes to defeat dragons ❌
+* seek out dragon treasuries left by dead dragons and send caravans with treasure ❌
+
+- dragons 〰
+* summoned by user requests ❌
+* create a domain at spawn location ❌
+* scorched create a wasteland around their domain ❌
+* color depends on domain location ❌
+* carnivores consume cattle or fish ❌
+* herbivores occupy grassland to graze ❌
+* greed don't feed, but have increased want for treasure ❌
+* anthropophages seek out people to eat ❌
+* serpents dodge 25% of attacks ❌
+* sharp ignore the diagonal movement penalty ➕
+* brutes deal increased damage to settlements and caravans ❌
+* druids are more effective at tending to spirits ❌
+* midas collect much more treasure passively ❌
+* have a rotation of wants ❌
+* want - tend to local spirits (more often when old) ❌
+* want - tend to treasury (more often when old) ❌
+* want - pillage cities for treasure (if not good) ❌
+* want - pillage villages and camps (if evil) ❌
+* protect nearby settlements from attackers (if good) ❌
+* attack all foreign entities (if territorial) ❌
+* age and die ❌
+* after death domain turns into treasury ❌

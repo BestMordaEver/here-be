@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, List, Set, Tuple
+import random
 
-from entities import Spirit
+from entities import Spirit, Village
 
 if TYPE_CHECKING:
 	from world import World
@@ -107,3 +108,98 @@ def generate_spirits(world: 'World') -> None:
 				)
 				
 				world.add_entity(spirit)
+
+
+def check_village_spawn_area(world: 'World', center_x: int, center_y: int) -> bool:
+	"""
+	Check if a 7x7 area around the given center is all plains biome and unoccupied.
+	Village center will be at (center_x, center_y).
+	Returns True if spawn is valid, False otherwise.
+	"""
+	# Check if 7x7 area is within bounds
+	if center_x < 3 or center_x >= world.WIDTH - 3:
+		return False
+	if center_y < 3 or center_y >= world.HEIGHT - 3:
+		return False
+	
+	# Check if entire 7x7 area is plains biome
+	for dy in range(-3, 4):
+		for dx in range(-3, 4):
+			x, y = center_x + dx, center_y + dy
+			height = world.height_map[y][x]
+			biome = world.get_biome_from_height(height)
+			if biome != 'field':  # 'field' is the plains biome
+				return False
+	
+	# Check if any entity occupies this 7x7 area
+	for dy in range(-3, 4):
+		for dx in range(-3, 4):
+			x, y = center_x + dx, center_y + dy
+			# Check all entities
+			for entity in world.entities:
+				# For settlements, check if they occupy this tile
+				if hasattr(entity, 'occupies'):
+					if entity.occupies((x, y)):
+						return False
+				# For non-settlements, check coordinates directly
+				elif entity.coordinates == (x, y):
+					return False
+	
+	return True
+
+
+def check_settlement_distance(world: 'World', x: int, y: int, min_distance: int = 20) -> bool:
+	"""
+	Check if the given coordinates are at least min_distance away from any settlement.
+	Returns True if far enough from all settlements, False otherwise.
+	"""
+	for entity in world.entities:
+		if hasattr(entity, 'settlement_type'):
+			# Calculate Manhattan distance to settlement center
+			ex, ey = entity.coordinates
+			distance = abs(x - ex) + abs(y - ey)
+			if distance < min_distance:
+				return False
+	return True
+
+
+def generate_village_name() -> str:
+	"""Generate a random village name."""
+	prefixes = [
+		"Green", "Oak", "River", "Stone", "Mill", "Pine", "Elm", "Willow",
+		"Brook", "Lake", "Hill", "Meadow", "Spring", "Autumn", "Summer", "Winter",
+		"North", "South", "East", "West", "New", "Old", "High", "Low"
+	]
+	suffixes = [
+		"vale", "ton", "field", "shire", "haven", "bury", "ford", "wood",
+		"side", "ridge", "dale", "view", "bridge", "hollow", "crest", "port"
+	]
+	
+	return f"{random.choice(prefixes)}{random.choice(suffixes)}"
+
+
+def attempt_spawn_village(world: 'World') -> bool:
+	"""
+	Attempt to spawn a single village at a random location.
+	Returns True if successful, False if spawn failed.
+	"""
+	# Try up to 100 random locations
+	for _ in range(100):
+		x = random.randint(0, world.WIDTH - 1)
+		y = random.randint(0, world.HEIGHT - 1)
+		
+		# Check if far enough from settlements
+		if not check_settlement_distance(world, x, y, min_distance=20):
+			continue
+		
+		# Check if 7x7 area is valid
+		if not check_village_spawn_area(world, x, y):
+			continue
+		
+		# Spawn successful - create village
+		name = generate_village_name()
+		village = Village(name, (x, y))
+		world.add_entity(village)
+		return True
+	
+	return False

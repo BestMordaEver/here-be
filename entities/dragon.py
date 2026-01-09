@@ -148,6 +148,5 @@ class Dragon(Mobile, Named, Thinking):
         data["type"] = self.type
         data["domain"] = self.domain
         data["rotation"] = self.rotation
-        data["target"] = self.target.name if hasattr(self.target, 'name') else self.target.coordinates
         data["debug_info"] = f"{self.name} type {self.type} rotation {self.rotation:.1f}°"
         return data

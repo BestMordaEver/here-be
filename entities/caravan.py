@@ -10,11 +10,13 @@ class Caravan(Mobile, Thinking):
     def __init__(
         self,
         coordinates: Coordinates,
+        home: Settlement,
         destination: "Settlement | Coordinates",
         intent: str,
     ):
         Mobile.__init__(self, "#2b1c00", '@', coordinates, 50, destination)
         Thinking.__init__(self, intent)
+        self.home = home
         self.loiter = 4
         self.current_target: Coordinates = destination.coordinates if hasattr(destination, "coordinates") else destination
         self.path: list[Coordinates] = []
@@ -40,7 +42,10 @@ class Caravan(Mobile, Thinking):
     
     def is_nearby_target(self, world) -> bool:
         """Check if caravan is nearby its current destination."""
-        if self.intent == "trade":
+        if self.intent.startswith("establish_camp"):
+            # For camp establishment, need to be at exact location
+            return self.coordinates == self.current_target
+        elif self.intent == "trade":
             if self.destination.__class__.__name__ == "Camp":
                 return self.get_distance(self.current_target) <= 2
             elif self.destination.__class__.__name__ == "Village":
@@ -70,11 +75,31 @@ class Caravan(Mobile, Thinking):
 
         if self.state == "created":
             self.state = "moving"
-            self.current_target = self.destination.coordinates
+            if isinstance(self.destination, tuple):
+                self.current_target = self.destination
+            else:
+                self.current_target = self.destination.coordinates
         elif self.state == "arrived":
-            if self.destination.is_alive:
-                    self.state = "trading"
-                    self.loiter_counter = 40
+            # Handle camp establishment
+            if self.intent.startswith("establish_camp"):
+                # Parse the intent: "establish_camp:name:spirit_type"
+                parts = self.intent.split(":")
+                if len(parts) >= 2:
+                    camp_name = parts[1]
+                    
+                    # Create the worker camp at current location
+                    from entities import Camp
+                    camp = Camp(camp_name, self.coordinates)
+                    world.add_entity(camp)
+                    
+                    # Caravan completes its mission
+                    self.die(world, "camp_established")
+                    return
+            
+            # Original trading logic
+            if hasattr(self.destination, 'is_alive') and self.destination.is_alive:
+                self.state = "trading"
+                self.loiter_counter = 40
             else:
                 self.state = "fleeing"  # Dead target, flee
             
@@ -107,6 +132,6 @@ class Caravan(Mobile, Thinking):
         """Serialize caravan to dictionary for JSON output."""
         data = super().serialize()
         data["home"] = self.home.name
-        data["destination"] = self.destination.name
-        data["debug_info"] = f"Caravan at {self.coordinates} heading to {self.current_target} home: {self.home.name}, destination: {self.destination.name}, state {self.state}, loiter_counter {self.loiter_counter}, path {len(self.path)}"
+        data["destination"] = self.destination.name if hasattr(self.destination, 'name') else self.destination
+        data["debug_info"] = f"Caravan at {self.coordinates} heading to {self.current_target} home: {self.home.name}, destination: {self.destination}, state {self.state}, loiter_counter {self.loiter_counter}, path {len(self.path)}"
         return data
