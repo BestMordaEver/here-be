@@ -17,14 +17,22 @@ WATER_FOOD_BONUS = 1
 WATER_FOOD_BONUS_INTERVAL = 10
 WATER_FOOD_BONUS_RADIUS = 10
 
+# Evolution thresholds
+EVOLUTION_WOOD_THRESHOLD = 0.5  # 50% of capacity
+EVOLUTION_ORE_MINIMUM = 20  # Minimum ores required
+
+# Village init constants
+STARTING_LIFE = 500  # Village starting HP
+STORAGE_CAPACITY = 200  # Village storage capacity
+
 
 class Village(Settlement, ExpansionMixin):
     """3x3 village with fields, homes, and city square."""
     
     def __init__(self, name: str, coordinates: Coordinates):
-        super().__init__(coordinates, life=500)
+        super().__init__(coordinates, life=STARTING_LIFE)
         Named.__init__(self, name)
-        self.storage_capacity = 200
+        self.storage_capacity = STORAGE_CAPACITY
         self.last_fishing_cycle = -999  # Last cycle fishing bonus was applied
         
         # Expansion tracking
@@ -36,7 +44,7 @@ class Village(Settlement, ExpansionMixin):
         return 3
 
     def get_prioritized_resource(self) -> str:
-        return 'forest'
+        return 'wood'
 
     def get_prioritized_resource_count(self) -> int:
         return 2
@@ -78,11 +86,28 @@ class Village(Settlement, ExpansionMixin):
                 ((x + 1, y + 1), "#", "#FFD700"),  # Bottom right field
             ]
     
-    def promote_to_city(self) -> 'City':
-        """Promote this village to a city."""
+    def can_evolve(self) -> bool:
+        """Check if village meets evolution requirements."""
+        return (self.resources['wood'] > self.storage_capacity * EVOLUTION_WOOD_THRESHOLD 
+                and self.resources['ores'] >= EVOLUTION_ORE_MINIMUM)
+    
+    def promote_to_city(self, world: 'World') -> 'City':
+        """Promote this village to a city, transferring all state."""
         from .city import City
         city = City(self.name, self.coordinates)
         city.life = self.life
+        city.resources = self.resources.copy()
+        city.subsidiary_camps = self.subsidiary_camps.copy()
+        
+        # Update camp homes to point to city
+        for camp in city.subsidiary_camps:
+            if hasattr(camp, 'home'):
+                camp.home = city
+        
+        # Replace self in world
+        world.remove_entity(self)
+        world.add_entity(city)
+        
         return city
     
     def generate_resources(self, world : 'World') -> None:
@@ -145,3 +170,7 @@ class Village(Settlement, ExpansionMixin):
             self.hurt(world, WOOD_CONSUMPTION - wood_consumed, 'disrepair')
         else:
             self.heal(RECOVERY_RATE)  # Heal 1 life if wood needs met
+        
+        # Check for evolution to city
+        if self.can_evolve():
+            self.promote_to_city(world)
