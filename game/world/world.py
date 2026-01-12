@@ -32,6 +32,10 @@ class World:
         # Generate spirits after heightmap is ready
         generate_spirits(self)
         
+        # Spawn initial city (first settlement)
+        from .entity_gen import attempt_spawn_city
+        attempt_spawn_city(self)
+        
         # Generate initial villages
         for _ in range(5):
             attempt_spawn_village(self)

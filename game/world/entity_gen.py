@@ -27,7 +27,7 @@ CATTLE_SPAWN_ATTEMPTS = 10  # Attempts to find valid cattle location
 CITY_STARTING_FOOD = 150
 CITY_STARTING_WOOD = 50
 CITY_STARTING_ORES = 30
-CITY_STARTING_TREASURE = 10
+CITY_STARTING_TREASURE = 200  # Enough to spawn spire immediately
 
 
 def find_resource_nodes(world: 'World') -> dict[str, List[List[Tuple[int, int]]]]:
@@ -383,7 +383,7 @@ def attempt_spawn_cattle(world: 'World') -> bool:
 
 def check_city_spawn_area(world: 'World', center_x: int, center_y: int) -> bool:
 	"""
-	Check if an 11x11 area around the given center is all plains biome and unoccupied.
+	Check if an 11x11 area around the given center is all plains biome.
 	City center will be at (center_x, center_y). City is 5x5 so we need extra margin.
 	Returns True if spawn is valid, False otherwise.
 	"""
@@ -402,20 +402,13 @@ def check_city_spawn_area(world: 'World', center_x: int, center_y: int) -> bool:
 			if biome != 'field':
 				return False
 	
-	# Check if any entity occupies this area
-	for dy in range(-5, 6):
-		for dx in range(-5, 6):
-			x, y = center_x + dx, center_y + dy
-			if world.get_entities_at((x, y)):
-				return False
-	
 	return True
 
 
 def attempt_spawn_city(world: 'World') -> bool:
-	"""
-	Attempt to spawn the initial city at a random location.
-	City starts with resources to immediately send worker caravans.
+	"""Spawn the initial city at a random location.
+	This is the first settlement, so no proximity checks needed.
+	City starts with resources to immediately spawn a spire and send worker caravans.
 	Returns True if successful, False if spawn failed.
 	"""
 	from game.entities import City
@@ -425,11 +418,7 @@ def attempt_spawn_city(world: 'World') -> bool:
 		x = random.randint(0, world.WIDTH - 1)
 		y = random.randint(0, world.HEIGHT - 1)
 		
-		# Check if far enough from settlements
-		if not check_settlement_distance(world, x, y, min_distance=CITY_MIN_SETTLEMENT_DISTANCE):
-			continue
-		
-		# Check if 11x11 area is valid
+		# Check if 11x11 area is valid plains
 		if not check_city_spawn_area(world, x, y):
 			continue
 		
@@ -437,7 +426,7 @@ def attempt_spawn_city(world: 'World') -> bool:
 		name = generate_village_name()  # Use same name generator
 		city = City(name, (x, y))
 		
-		# Initialize with resources for immediate expansion
+		# Initialize with resources for immediate expansion and spire
 		city.resources['food'] = CITY_STARTING_FOOD
 		city.resources['wood'] = CITY_STARTING_WOOD
 		city.resources['ores'] = CITY_STARTING_ORES
