@@ -3,7 +3,8 @@ import threading
 import time
 import traceback
 from typing import List
-from . import HeightMapGenerator, attempt_spawn_village, generate_spirits
+from . import HeightMapGenerator, attempt_spawn_village, attempt_spawn_cattle, generate_spirits
+from .entity_gen import CATTLE_SPAWN_INTERVAL
 
 class World:
 
@@ -82,6 +83,10 @@ class World:
         if self.update_count % 200 == 0:
             for _ in range(5):
                 attempt_spawn_village(self)
+        
+        # Periodic cattle spawning
+        if self.update_count % CATTLE_SPAWN_INTERVAL == 0:
+            attempt_spawn_cattle(self)
         
         # Iterate over a copy since entities may remove themselves during update
         for entity in list(self.entities):

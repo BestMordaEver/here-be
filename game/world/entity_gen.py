@@ -8,6 +8,28 @@ if TYPE_CHECKING:
 	from . import World
 
 
+# Spirit generation constants
+WATER_SPIRIT_THRESHOLD = 5  # Minimum tiles for water spirit
+MOUNTAIN_SPIRIT_THRESHOLD = 5  # Minimum tiles for mountain spirit
+FOREST_SPIRIT_THRESHOLD = 10  # Minimum tiles for forest spirit
+FOREST_SPIRIT_LIFE_MULTIPLIER = 5  # Life per tile for forest spirits
+OTHER_SPIRIT_LIFE_MULTIPLIER = 10  # Life per tile for other spirits
+FOREST_MAX_DISTANCE = 25  # Max distance before forest node splits
+KMEANS_ITERATIONS = 10  # K-means clustering iterations
+
+# Village/City spawn constants
+VILLAGE_MIN_SETTLEMENT_DISTANCE = 20  # Min distance between settlements for village
+CITY_MIN_SETTLEMENT_DISTANCE = 30  # Min distance between settlements for city
+CITY_SPAWN_ATTEMPTS = 50  # Attempts to find valid city location
+CATTLE_SPAWN_ATTEMPTS = 10  # Attempts to find valid cattle location
+
+# City starting resources
+CITY_STARTING_FOOD = 150
+CITY_STARTING_WOOD = 50
+CITY_STARTING_ORES = 30
+CITY_STARTING_TREASURE = 10
+
+
 def find_resource_nodes(world: 'World') -> dict[str, List[List[Tuple[int, int]]]]:
 	"""
 	Find all interconnected resource nodes for each non-plains biome.
@@ -63,7 +85,7 @@ def find_resource_nodes(world: 'World') -> dict[str, List[List[Tuple[int, int]]]
 	return resource_nodes
 
 
-def _split_forest_node(node: List[Tuple[int, int]], max_distance: float = 25) -> List[List[Tuple[int, int]]]:
+def _split_forest_node(node: List[Tuple[int, int]], max_distance: float = FOREST_MAX_DISTANCE) -> List[List[Tuple[int, int]]]:
 	"""
 	Split a forest node into multiple sub-nodes if the maximum Euclidean distance exceeds threshold.
 	Uses k-means clustering to partition the forest into roughly equal parts.
@@ -87,7 +109,7 @@ def _split_forest_node(node: List[Tuple[int, int]], max_distance: float = 25) ->
 	# Initialize centroids randomly from existing points
 	centroids = random.sample(node, min(num_clusters, len(node)))
 	
-	for iteration in range(10):  # 10 iterations should converge
+	for iteration in range(KMEANS_ITERATIONS):  # iterations should converge
 		# Assign each point to nearest centroid
 		clusters = [[] for _ in range(len(centroids))]
 		for point in node:
@@ -186,9 +208,9 @@ def generate_spirits(world: 'World') -> None:
 	
 	# Define thresholds for spirit spawning
 	spirit_thresholds = {
-		'water': 5,
-		'mountain': 5,
-		'forest': 10
+		'water': WATER_SPIRIT_THRESHOLD,
+		'mountain': MOUNTAIN_SPIRIT_THRESHOLD,
+		'forest': FOREST_SPIRIT_THRESHOLD
 	}
 	
 	for biome, nodes in resource_nodes.items():
@@ -200,7 +222,7 @@ def generate_spirits(world: 'World') -> None:
 				# For forests, check if we need to split based on distance
 				sub_nodes = [node]
 				if biome == 'forest':
-					sub_nodes = _split_forest_node(node, max_distance=25)
+					sub_nodes = _split_forest_node(node, max_distance=FOREST_MAX_DISTANCE)
 				
 				# Create spirits for each sub-node (or the original node if not split)
 				for sub_node in sub_nodes:
@@ -223,7 +245,7 @@ def generate_spirits(world: 'World') -> None:
 							min_total_distance = total_distance
 							spawn_coord = candidate
 					
-					life = len(sub_node) * 5 if biome == 'forest' else len(sub_node) * 10
+					life = len(sub_node) * FOREST_SPIRIT_LIFE_MULTIPLIER if biome == 'forest' else len(sub_node) * OTHER_SPIRIT_LIFE_MULTIPLIER
 
 					# Create the spirit with life equal to node size
 					spirit = Spirit(
@@ -304,7 +326,7 @@ def attempt_spawn_village(world: 'World') -> bool:
 	y = random.randint(0, world.HEIGHT - 1)
 	
 	# Check if far enough from settlements
-	if not check_settlement_distance(world, x, y, min_distance=20):
+	if not check_settlement_distance(world, x, y, min_distance=VILLAGE_MIN_SETTLEMENT_DISTANCE):
 		return False
 	
 	# Check if 7x7 area is valid
@@ -316,3 +338,112 @@ def attempt_spawn_village(world: 'World') -> bool:
 	village = Village(name, (x, y))
 	world.add_entity(village)
 	return True
+
+
+# Cattle spawning constants
+CATTLE_SPAWN_INTERVAL = 50  # Spawn cattle every N cycles
+CATTLE_MAX_COUNT = 20  # Maximum cattle in the world
+CATTLE_COLORS = ["#8B4513", "#A0522D", "#D2691E", "#CD853F"]  # Brown shades
+
+
+def attempt_spawn_cattle(world: 'World') -> bool:
+	"""
+	Attempt to spawn cattle at a random plains location.
+	Returns True if successful, False if spawn failed.
+	"""
+	from game.entities import Cattle
+	
+	# Count existing cattle
+	cattle_count = sum(1 for e in world.entities if e.__class__.__name__ == 'Cattle')
+	if cattle_count >= CATTLE_MAX_COUNT:
+		return False
+	
+	# Try to find a valid spawn location
+	for _ in range(CATTLE_SPAWN_ATTEMPTS):
+		x = random.randint(0, world.WIDTH - 1)
+		y = random.randint(0, world.HEIGHT - 1)
+		
+		# Must be on plains
+		height = world.height_map[y][x]
+		if world.get_biome_from_height(height) != 'field':
+			continue
+		
+		# Check no entity at location
+		if world.get_entities_at((x, y)):
+			continue
+		
+		# Spawn cattle
+		color = random.choice(CATTLE_COLORS)
+		cattle = Cattle(color, (x, y), life=30)
+		world.add_entity(cattle)
+		return True
+	
+	return False
+
+
+def check_city_spawn_area(world: 'World', center_x: int, center_y: int) -> bool:
+	"""
+	Check if an 11x11 area around the given center is all plains biome and unoccupied.
+	City center will be at (center_x, center_y). City is 5x5 so we need extra margin.
+	Returns True if spawn is valid, False otherwise.
+	"""
+	# Check if 11x11 area is within bounds
+	if center_x < 5 or center_x >= world.WIDTH - 5:
+		return False
+	if center_y < 5 or center_y >= world.HEIGHT - 5:
+		return False
+	
+	# Check if entire 11x11 area is plains biome
+	for dy in range(-5, 6):
+		for dx in range(-5, 6):
+			x, y = center_x + dx, center_y + dy
+			height = world.height_map[y][x]
+			biome = world.get_biome_from_height(height)
+			if biome != 'field':
+				return False
+	
+	# Check if any entity occupies this area
+	for dy in range(-5, 6):
+		for dx in range(-5, 6):
+			x, y = center_x + dx, center_y + dy
+			if world.get_entities_at((x, y)):
+				return False
+	
+	return True
+
+
+def attempt_spawn_city(world: 'World') -> bool:
+	"""
+	Attempt to spawn the initial city at a random location.
+	City starts with resources to immediately send worker caravans.
+	Returns True if successful, False if spawn failed.
+	"""
+	from game.entities import City
+	
+	# Try multiple times to find a valid location
+	for _ in range(CITY_SPAWN_ATTEMPTS):
+		x = random.randint(0, world.WIDTH - 1)
+		y = random.randint(0, world.HEIGHT - 1)
+		
+		# Check if far enough from settlements
+		if not check_settlement_distance(world, x, y, min_distance=CITY_MIN_SETTLEMENT_DISTANCE):
+			continue
+		
+		# Check if 11x11 area is valid
+		if not check_city_spawn_area(world, x, y):
+			continue
+		
+		# Spawn successful - create city with starting resources
+		name = generate_village_name()  # Use same name generator
+		city = City(name, (x, y))
+		
+		# Initialize with resources for immediate expansion
+		city.resources['food'] = CITY_STARTING_FOOD
+		city.resources['wood'] = CITY_STARTING_WOOD
+		city.resources['ores'] = CITY_STARTING_ORES
+		city.resources['treasure'] = CITY_STARTING_TREASURE
+		
+		world.add_entity(city)
+		return True
+	
+	return False

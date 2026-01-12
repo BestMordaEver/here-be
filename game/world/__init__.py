@@ -7,6 +7,7 @@ __all__ = [
 	'World',
 	'find_resource_nodes',
 	'attempt_spawn_village',
+	'attempt_spawn_cattle',
 	'generate_spirits',
 	'generate_village_name',
 	'check_village_spawn_area',
