@@ -83,11 +83,9 @@ class World:
             for _ in range(5):
                 attempt_spawn_village(self)
         
-        for entity in self.entities:
+        # Iterate over a copy since entities may remove themselves during update
+        for entity in list(self.entities):
             entity.update(self)
-            # Check for dead camps
-            if entity.__class__.__name__ == 'Camp' and entity.is_dead:
-                self.remove_entity(entity)
     
     def get_next_update_time(self) -> float:
         """Get seconds until next update."""

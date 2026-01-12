@@ -1,7 +1,7 @@
-from .base import Coordinates, Mobile, Thinking
+from .base import Coordinates, Mobile, Thinking, Mortal
 
 
-class Bandit(Mobile, Thinking):
+class Bandit(Mortal, Mobile, Thinking):
 
     def __init__(
         self,

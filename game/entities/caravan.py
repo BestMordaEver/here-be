@@ -1,4 +1,4 @@
-from .base import Coordinates, Mobile, Thinking, Settlement
+from .base import Coordinates, Mobile, Thinking, Settlement, Mortal
 from typing import TYPE_CHECKING, Dict, Any
 
 if TYPE_CHECKING:
@@ -11,7 +11,7 @@ VILLAGE_TRADE_DISTANCE = 3
 CITY_TRADE_DISTANCE = 5
 
 
-class Caravan(Mobile, Thinking):
+class Caravan(Mortal, Mobile, Thinking):
 
     def __init__(
         self,

@@ -1,7 +1,7 @@
-from .base import Coordinates, Mobile, Settlement
+from .base import Coordinates, Mobile, Settlement, Mortal
 import random
 
-class Cattle(Mobile):
+class Cattle(Mortal, Mobile):
     
     def __init__(
         self,

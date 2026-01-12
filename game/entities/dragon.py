@@ -1,14 +1,14 @@
 from math import atan2, degrees
 from random import randint
 from typing import TYPE_CHECKING, Dict, Any
-from .base import Coordinates, Mobile, Named, Thinking
+from .base import Coordinates, Mobile, Named, Thinking, Mortal
 
 
 if TYPE_CHECKING:
     from game.world import World
 
 
-class Dragon(Mobile, Named, Thinking):
+class Dragon(Mortal, Mobile, Named, Thinking):
 
     def __init__(
         self,

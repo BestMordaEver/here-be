@@ -158,6 +158,8 @@ class ExpansionMixin(Named):
             # Valid location found! Create caravan
             from game.entities import Caravan
             
+            spirit.is_occupied = True  # Mark spirit as occupied
+            
             # Create the caravan with intent to establish camp
             caravan = Caravan(
                 coordinates=(self.coordinates[0], self.coordinates[1] + 2),
