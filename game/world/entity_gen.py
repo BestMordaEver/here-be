@@ -223,7 +223,7 @@ def generate_spirits(world: 'World') -> None:
 							min_total_distance = total_distance
 							spawn_coord = candidate
 					
-					life = len(sub_node) * 5 if biome != 'forest' else len(sub_node) * 10
+					life = len(sub_node) * 5 if biome == 'forest' else len(sub_node) * 10
 
 					# Create the spirit with life equal to node size
 					spirit = Spirit(

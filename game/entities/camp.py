@@ -1,5 +1,5 @@
 """Worker camp settlement."""
-from .base import Coordinates, Settlement
+from .base import Coordinates, Settlement, Mortal
 from typing import List, Tuple, TYPE_CHECKING
 
 
@@ -15,12 +15,13 @@ ORE_GATHER_RATE = 3
 SPIRIT_HURT_RATE = 2
 
 
-class Camp(Settlement):
+class Camp(Mortal, Settlement):
     """2x2 worker camp made of brown diamonds."""
     
     def __init__(self, coordinates: Coordinates, spirit_coordinates: Coordinates = None):
         super().__init__(coordinates, life=200)
         self.storage_capacity = 100
+        self.resources['food'] = 40  # Initial food supply
         self.nearby_spirits : List['Spirit'] | None = None  # Cached list of nearby spirits (lazy init)
         self.spirit_coordinates = spirit_coordinates
     
