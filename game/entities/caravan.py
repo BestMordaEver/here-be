@@ -6,9 +6,14 @@ if TYPE_CHECKING:
     from . import Village, City
 
 
-CAMP_TRADE_DISTANCE = 2
-VILLAGE_TRADE_DISTANCE = 3
-CITY_TRADE_DISTANCE = 5
+# Caravan constants
+CAMP_TRADE_DISTANCE = 2  # Distance to trade with camps
+VILLAGE_TRADE_DISTANCE = 3  # Distance to trade with villages
+CITY_TRADE_DISTANCE = 5  # Distance to trade with cities
+TRADE_CARGO_CAPACITY = 40  # How much cargo a caravan can carry
+STARTING_LIFE = 50  # Caravan starting HP
+LOITER_TIME = 4  # Cycles between movements
+TRADE_TRANSFER_RATE = 4  # Resources transferred per cycle during trade
 
 
 class Caravan(Mortal, Mobile, Thinking):
@@ -19,13 +24,15 @@ class Caravan(Mortal, Mobile, Thinking):
         home: 'Village | City',
         destination: "Settlement | Coordinates",
         intent: str,
+        cargo: Dict[str, int] = None,
     ):
-        Mobile.__init__(self, "#2b1c00", '@', coordinates, 50, destination)
+        Mobile.__init__(self, "#2b1c00", '@', coordinates, STARTING_LIFE, destination)
         Thinking.__init__(self, intent)
         self.home = home
-        self.loiter = 4
+        self.loiter = LOITER_TIME
         self.current_target: Coordinates = destination.coordinates if hasattr(destination, "coordinates") else destination
         self.path: list[Coordinates] = []
+        self.cargo: Dict[str, int] = cargo if cargo else {}  # Resources being transported
     
     def die(self, world : 'World', reason):
         super().die(world, reason)
@@ -85,6 +92,9 @@ class Caravan(Mortal, Mobile, Thinking):
     def update(self, world) -> None:
         """Update caravan state."""
 
+        # Generate thoughts occasionally
+        self.generate_thought(world)
+
         # Movement processed by Mobile
         super().update(world)
         if self.state == "moving" and self.is_nearby_target():
@@ -114,7 +124,7 @@ class Caravan(Mortal, Mobile, Thinking):
                 else:
                     from . import Camp
 
-                    camp = Camp(self.coordinates)
+                    camp = Camp(self.coordinates, self.spirit_coordinates, self.home)
                     self.home.subsidiary_camps.append(camp)
                     world.add_entity(camp)
                     
@@ -125,7 +135,6 @@ class Caravan(Mortal, Mobile, Thinking):
             # Trade handling
             elif self.destination.is_alive:
                 self.state = "trading"
-                self.loiter_counter = 40
             else:
                 self.state = "fleeing"  # Dead target, flee
             
@@ -149,10 +158,37 @@ class Caravan(Mortal, Mobile, Thinking):
             if self.state != "arrived":
                 self.state = "fleeing"
         elif self.state == "trading":
-            if self.loiter_counter > 0:
-                self.loiter_counter -= 1
-            else:
+            # Transfer resources each cycle
+            # If no resources left to transfer, mission complete
+            if not self._execute_trade():
                 self.die(world, "success")
+    
+    def _execute_trade(self) -> bool:
+        """Execute resource transfer between caravan and destination.
+        Transfers up to TRADE_TRANSFER_RATE of each resource per cycle.
+        Returns True if any resources were transferred, False if cargo is empty."""
+        if not hasattr(self.destination, 'resources'):
+            return False
+        
+        dest = self.destination
+        transferred = False
+        
+        # Transfer resources from cargo to destination
+        for resource in list(self.cargo.keys()):
+            if self.cargo[resource] > 0:
+                # Transfer up to TRADE_TRANSFER_RATE per cycle
+                transfer_amount = min(TRADE_TRANSFER_RATE, self.cargo[resource])
+                actual_added = dest.add_resource(resource, transfer_amount)
+                self.cargo[resource] -= actual_added
+                
+                if actual_added > 0:
+                    transferred = True
+                
+                # Remove resource from cargo if depleted
+                if self.cargo[resource] <= 0:
+                    del self.cargo[resource]
+        
+        return transferred
 
     def serialize(self) -> Dict[str, Any]:
         """Serialize caravan to dictionary for JSON output."""

@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from game.world import World
+    from game.entities import Caravan
 
 
 class Settlement(Entity, Thinking):
@@ -66,6 +67,33 @@ class Settlement(Entity, Thinking):
         self.resources[resource_type] = current - actual_remove
         return actual_remove
     
+    def send_caravan(self, world: 'World', destination, intent: str, cargo: Dict[str, int] = None, food_cost: int = 0) -> 'Caravan':
+        """Unified method to create and send a caravan.
+        Args:
+            destination: Settlement or Coordinates to send caravan to
+            intent: Caravan's intent ("trade", "settle wood", etc.)
+            cargo: Optional dict of resources to carry
+            food_cost: Food to deduct when sending (0 for camps)
+        Returns: The created Caravan entity
+        """
+        from game.entities import Caravan
+        
+        # Deduct food cost if specified
+        if food_cost > 0:
+            self.remove_resource('food', food_cost)
+        
+        # Create caravan at settlement's southern gate
+        caravan = Caravan(
+            coordinates=(self.coordinates[0], self.coordinates[1] + 2),
+            home=self,
+            destination=destination,
+            intent=intent,
+            cargo=cargo if cargo else {}
+        )
+        
+        world.add_entity(caravan)
+        return caravan
+    
     def generate_resources(self, world: 'World') -> None:
         """Generate resources based on settlement type. Override in subclasses."""
         raise NotImplementedError("Subclasses must implement generate_resources()")
@@ -84,6 +112,8 @@ class Settlement(Entity, Thinking):
         if issubclass(type(self), ExpansionMixin) and self.is_alive:
             # Attempt settlement expansion
             self.expand_settlement(world)
+            # Send trade caravans to existing camps
+            self.send_trade_caravans(world)
 
     def serialize(self) -> Dict[str, Any]:
         """Serialize settlement to dictionary for JSON output."""

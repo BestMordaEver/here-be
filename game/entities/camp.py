@@ -14,16 +14,27 @@ WOOD_GATHER_RATE = 3
 ORE_GATHER_RATE = 3
 SPIRIT_HURT_RATE = 2
 
+# Camp init constants
+STARTING_LIFE = 200  # Camp starting HP
+STORAGE_CAPACITY = 100  # Camp storage capacity
+STARTING_FOOD = 40  # Initial food supply
+
+# Camp caravan constants
+CAMP_RETURN_CARAVAN_COOLDOWN = 15  # Cycles between sending return caravans
+CAMP_RESOURCE_SEND_THRESHOLD = 40  # Min resources to send back home
+
 
 class Camp(Mortal, Settlement):
     """2x2 worker camp made of brown diamonds."""
     
-    def __init__(self, coordinates: Coordinates, spirit_coordinates: Coordinates = None):
-        super().__init__(coordinates, life=200)
-        self.storage_capacity = 100
-        self.resources['food'] = 40  # Initial food supply
+    def __init__(self, coordinates: Coordinates, spirit_coordinates: Coordinates, home: 'Settlement'):
+        super().__init__(coordinates, life=STARTING_LIFE)
+        self.storage_capacity = STORAGE_CAPACITY
+        self.resources['food'] = STARTING_FOOD  # Initial food supply
         self.nearby_spirits : List['Spirit'] | None = None  # Cached list of nearby spirits (lazy init)
         self.spirit_coordinates = spirit_coordinates
+        self.home = home
+        self.last_caravan_cycle = -999  # Last cycle a return caravan was sent
     
     def die(self, world: 'World', cause: str) -> None:
         """Handle camp depletion."""
@@ -99,3 +110,43 @@ class Camp(Mortal, Settlement):
                 
                 # Hurt the spirit
                 spirit.hurt(world, SPIRIT_HURT_RATE, 'exploitation')
+        
+        # Send return caravans with gathered resources
+        self.send_return_caravan(world)
+    
+    def send_return_caravan(self, world: 'World') -> None:
+        """Send caravan back to home with gathered resources (wood/ores)."""
+        if self.is_dead:
+            return
+        
+        # Check if we have a home to send resources to
+        if not hasattr(self, 'home') or not self.home or not self.home.is_alive:
+            return
+        
+        # Check caravan cooldown
+        if world.update_count - self.last_caravan_cycle < CAMP_RETURN_CARAVAN_COOLDOWN:
+            return
+        
+        # Check if we have resources to send
+        wood = self.resources.get('wood', 0)
+        ores = self.resources.get('ores', 0)
+        
+        if wood < CAMP_RESOURCE_SEND_THRESHOLD and ores < CAMP_RESOURCE_SEND_THRESHOLD:
+            return  # Not enough resources to send
+        
+        # Prepare cargo
+        cargo = {}
+        if wood >= CAMP_RESOURCE_SEND_THRESHOLD:
+            # Send half of wood
+            wood_to_send = wood // 2
+            self.remove_resource('wood', wood_to_send)
+            cargo['wood'] = wood_to_send
+        
+        if ores >= CAMP_RESOURCE_SEND_THRESHOLD:
+            # Send half of ores
+            ores_to_send = ores // 2
+            self.remove_resource('ores', ores_to_send)
+            cargo['ores'] = ores_to_send
+        
+        if cargo:  # Only send if we have cargo
+            self.send_caravan(world, self.home, "trade", cargo=cargo, food_cost=0)

@@ -7,8 +7,16 @@ if TYPE_CHECKING:
     from game.world import World
 
 
-WOOD_CAMP_RANGE = 6
-ORE_CAMP_RANGE = 10
+# Expansion constants
+WOOD_CAMP_RANGE = 6  # Max distance from forest spirit for camp
+ORE_CAMP_RANGE = 10  # Max distance from mountain spirit for camp
+EXCESS_THRESHOLD = 0.5  # Resource excess threshold (50% capacity)
+CARAVAN_COOLDOWN = 8  # Cycles between sending caravans
+CAMP_SEARCH_RADIUS = 15  # Radius around spirit to search for camp locations
+MIN_CAMP_SETTLEMENT_DISTANCE = 10  # Minimum distance from settlements for camp
+SETTLER_FOOD_COST = 40  # Food cost for sending settler caravan
+CAMP_FOOD_THRESHOLD = 0.5  # Camp food threshold (50% capacity)
+RESOURCE_PICKUP_THRESHOLD = 10  # Minimum resources to trigger pickup
 
 
 class ExpansionMixin(Named):
@@ -16,7 +24,7 @@ class ExpansionMixin(Named):
     
     def has_excess(self, resource) -> bool:
         """Check if settlement has excess of the resource (more than 50% capacity)."""
-        return self.resources[resource] > self.storage_capacity * 0.5
+        return self.resources[resource] > self.storage_capacity * EXCESS_THRESHOLD
     
     def expand_settlement(self, world: 'World') -> None:
         """Expand the settlement by creating new camps or villages."""
@@ -28,13 +36,13 @@ class ExpansionMixin(Named):
         spirit_x, spirit_y = spirit.coordinates
         valid_locations = []
         
-        # Search within a 15-tile radius
-        for dx in range(-15, 15):
-            for dy in range(-15, 15):
+        # Search within camp search radius
+        for dx in range(-CAMP_SEARCH_RADIUS, CAMP_SEARCH_RADIUS):
+            for dy in range(-CAMP_SEARCH_RADIUS, CAMP_SEARCH_RADIUS):
                 x, y = spirit_x + dx, spirit_y + dy
                 
                 distance = spirit.get_distance((x, y))
-                if distance > 15:
+                if distance > CAMP_SEARCH_RADIUS:
                     continue
                 
                 # Check if within world bounds (need room for 2x2 camp)
@@ -43,8 +51,8 @@ class ExpansionMixin(Named):
                 
                 from game.world import check_settlement_distance
 
-                # Check if at least 10 tiles from any settlement
-                if not check_settlement_distance(world, x, y, min_distance=10):
+                # Check if at least minimum distance from any settlement
+                if not check_settlement_distance(world, x, y, min_distance=MIN_CAMP_SETTLEMENT_DISTANCE):
                     continue
                 
                 # Check if 2x2 area is all plains biome
@@ -104,8 +112,8 @@ class ExpansionMixin(Named):
         if not self.has_excess('food'):
             return
         
-        # Check caravan cooldown (8 cycles)
-        if world.update_count - self.last_caravan_cycle < 8:
+        # Check caravan cooldown
+        if world.update_count - self.last_caravan_cycle < CARAVAN_COOLDOWN:
             return
         
         # Check if we've reached the camp limit (3 max)
@@ -156,22 +164,15 @@ class ExpansionMixin(Named):
                 continue  # Too far from mountain spirit
             
             # Valid location found! Create caravan
-            from game.entities import Caravan
-            
             spirit.is_occupied = True  # Mark spirit as occupied
             
             # Create the caravan with intent to establish camp
-            caravan = Caravan(
-                coordinates=(self.coordinates[0], self.coordinates[1] + 2),
-                home=self,
+            caravan = self.send_caravan(
+                world=world,
                 destination=camp_location,
-                intent="settle " + ("wood" if spirit.type == 'forest' else "ore") + f" {spirit.coordinates}"
+                intent="settle " + ("wood" if spirit.type == 'forest' else "ore") + f" {spirit.coordinates}",
+                food_cost=SETTLER_FOOD_COST
             )
-            
-            world.add_entity(caravan)
-            
-            # Deduct some food for sending the caravan
-            self.remove_resource('food', 40)
             
             # Track the subsidiary camp
             self.subsidiary_camps.append(caravan)
@@ -180,3 +181,50 @@ class ExpansionMixin(Named):
             self.last_caravan_cycle = world.update_count
             
             return  # Only send one caravan at a time
+    
+    def send_trade_caravans(self, world: 'World') -> None:
+        """Send trade caravans to existing camps to exchange resources."""
+        if not self.has_excess('food'):
+            return
+        
+        # Check caravan cooldown
+        if world.update_count - self.last_caravan_cycle < CARAVAN_COOLDOWN:
+            return
+        
+        # Find camps that need food or have resources to pick up
+        for sub in self.subsidiary_camps:
+            if sub.__class__.__name__ != 'Camp':
+                continue  # Skip caravans still en route
+            
+            camp = sub
+            if not camp.is_alive:
+                continue
+            
+            # Check if camp needs food (less than threshold capacity)
+            needs_food = camp.resources.get('food', 0) < camp.storage_capacity * CAMP_FOOD_THRESHOLD
+            # Check if camp has resources to pick up
+            has_resources = camp.resources.get('wood', 0) > RESOURCE_PICKUP_THRESHOLD or camp.resources.get('ores', 0) > RESOURCE_PICKUP_THRESHOLD
+            
+            if needs_food or has_resources:
+                from game.entities.caravan import TRADE_CARGO_CAPACITY
+                
+                # Load food cargo if we have excess
+                cargo = {}
+                if needs_food:
+                    food_to_send = min(TRADE_CARGO_CAPACITY, self.resources.get('food', 0) // 2)
+                    if food_to_send > 0:
+                        cargo['food'] = food_to_send
+                
+                # Send caravan (food will be deducted from cargo preparation above)
+                caravan = self.send_caravan(
+                    world=world,
+                    destination=camp,
+                    intent="trade",
+                    cargo=cargo,
+                    food_cost=cargo.get('food', 0)  # Deduct the food we're sending
+                )
+                
+                world.add_entity(caravan)
+                
+                self.last_caravan_cycle = world.update_count
+                return  # Only send one caravan at a time
