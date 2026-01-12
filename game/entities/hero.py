@@ -5,7 +5,7 @@ import random
 
 if TYPE_CHECKING:
     from game.world import World
-    from . import City, Village, Dragon
+    from . import City, Village, Dragon, Caravan
 
 
 # Hero constants
@@ -13,6 +13,7 @@ STARTING_LIFE = 100  # Hero starting HP
 HEAL_RATE = 2  # HP healed per cycle in settlement
 PATROL_RANGE = 15  # Range to look for threats
 PROTECTION_RANGE = 10  # Range to rush to defend
+ESCORT_RANGE = 20  # Range to look for caravans to escort
 ATTACK_DAMAGE = 15  # Damage dealt to enemies
 ATTACK_COOLDOWN = 5  # Cycles between attacks
 PARTY_SIZE_MIN = 3
@@ -110,6 +111,32 @@ class Hero(Mortal, Mobile, Thinking):
         
         return False
     
+    def find_caravan_to_escort(self, world) -> 'Caravan':
+        """Find a caravan from home city that needs escorting."""
+        if not self.home or not self.home.is_alive:
+            return None
+        
+        # Look for caravans from our home city
+        for entity in world.entities:
+            if entity.__class__.__name__ == 'Caravan' and entity.is_alive:
+                # Check if caravan is from our home city
+                if hasattr(entity, 'home') and entity.home == self.home:
+                    # Check if caravan is within escort range
+                    if self.get_distance(entity.coordinates) <= ESCORT_RANGE:
+                        # Check if caravan is not already being escorted by another hero
+                        escort_count = 0
+                        for other in world.entities:
+                            if other.__class__.__name__ == 'Hero' and other.is_alive:
+                                if hasattr(other, 'target_entity') and other.target_entity == entity:
+                                    if other.intent == "escorting":
+                                        escort_count += 1
+                        
+                        # Only escort if not already being escorted
+                        if escort_count == 0:
+                            return entity
+        
+        return None
+    
     def choose_target(self, world) -> None:
         """Decide what to do based on current situation."""
         # Priority 1: Respond to nearby threats
@@ -122,7 +149,17 @@ class Hero(Mortal, Mobile, Thinking):
             self.state = "moving"
             return
         
-        # Priority 2: Form party and hunt dragons
+        # Priority 2: Escort caravans from home city
+        caravan = self.find_caravan_to_escort(world)
+        if caravan:
+            self.target_entity = caravan
+            self.destination = caravan.coordinates
+            self.intent = "escorting"
+            self.path = self.find_path(caravan.coordinates, world)
+            self.state = "moving"
+            return
+        
+        # Priority 3: Form party and hunt dragons
         dragon = self.find_dragon(world)
         if dragon and (self.party or self.form_party(world)):
             self.target_entity = dragon
@@ -132,7 +169,7 @@ class Hero(Mortal, Mobile, Thinking):
             self.state = "moving"
             return
         
-        # Priority 3: Patrol near home city
+        # Priority 4: Patrol near home city
         if self.home.is_alive:
             # Random patrol destination near home
             hx, hy = self.home.coordinates
@@ -157,7 +194,22 @@ class Hero(Mortal, Mobile, Thinking):
         if self.target_entity and hasattr(self.target_entity, 'coordinates'):
             if self.target_entity.is_alive:
                 self.destination = self.target_entity.coordinates
+                
+                # For escorting, stay close but don't crowd the caravan
+                if self.intent == "escorting":
+                    distance = self.get_distance(self.destination)
+                    # Stay within 2-3 tiles of caravan
+                    if distance <= 3:
+                        # Close enough, don't move closer
+                        self.state = "arrived"
+                        return
+                
                 self.path = self.find_path(self.destination, world)
+            else:
+                # Target died, clear it
+                self.target_entity = None
+                self.state = "arrived"
+                return
         
         if not self.path and self.destination:
             self.path = self.find_path(self.destination, world)
@@ -211,5 +263,11 @@ class Hero(Mortal, Mobile, Thinking):
         data["home"] = self.home.name if self.home else "none"
         data["intent"] = self.intent
         data["in_party"] = self.party is not None
-        data["debug_info"] = f"Hero at {self.coordinates} intent: {self.intent}, party: {len(self.party) if self.party else 0}"
+        target_info = "none"
+        if self.target_entity:
+            if hasattr(self.target_entity, 'name'):
+                target_info = self.target_entity.name
+            else:
+                target_info = self.target_entity.__class__.__name__
+        data["debug_info"] = f"Hero at {self.coordinates} intent: {self.intent}, target: {target_info}, party: {len(self.party) if self.party else 0}"
         return data
