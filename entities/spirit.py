@@ -19,35 +19,22 @@ class Spirit(Entity):
         type: str,
         coordinates: Coordinates,
         life: int,
-        domain_area: int,
         domain_tiles: List[Tuple[int, int]] = None,
     ):
         super().__init__("", "", coordinates, life)
         self.type = type    # forest, water, mountain
-        self.domain_area = domain_area
         self.max_life = life
         self.attending_dragons: list["Dragon"] = []
         self.domain_tiles = domain_tiles if domain_tiles is not None else []
-    
-    def life_depletion_on_use(self, amount: int) -> None:
-        """Deplete life when the spirit is used/exploited."""
-        self.life = max(0, self.life - amount)
-        self._update_domain_area()
+        self.is_occupied = False
     
     def natural_recovery(self) -> None:
         """Recover life naturally over time."""
         self.life = min(self.max_life, self.life + NATURAL_RECOVERY_RATE)
-        self._update_domain_area()
     
     def get_tended(self) -> None:
         """Recover life when tended by a dragon."""
         self.life = min(self.max_life, self.life + TENDED_RECOVERY_RATE)
-        self._update_domain_area()
-    
-    def _update_domain_area(self) -> None:
-        """Update domain area based on current life (scales with life)."""
-        if self.max_life > 0:
-            self.domain_area = max(1, int(self.domain_area * (self.life / self.max_life)))
     
     def update(self, world) -> None:
         """Update spirit state during timestep."""
@@ -61,13 +48,10 @@ class Spirit(Entity):
         """Serialize spirit to dictionary for JSON output."""
         base = super().serialize()
         base.update({
-            "type": self.type,
-            "life": self.life,
-            "max_life": self.max_life,
-            "domain_area": self.domain_area,
             "domain_tiles": self.domain_tiles,
+            "debug_info": f"{self}"
         })
         return base
     
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(life={self.life}/{self.max_life}, domain={self.domain_area})"
+        return f"{self.__class__.__name__}(life={self.life}/{self.max_life})"

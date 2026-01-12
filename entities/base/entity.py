@@ -17,6 +17,7 @@ class Entity:
         self.color = color
         self.character = character
         self.coordinates = coordinates
+        self.max_life = life
         self.life = life
         self.is_alive = True
         self.is_dead = False
@@ -24,15 +25,47 @@ class Entity:
     def update(self, world) -> None:
         raise NotImplementedError("Subclasses must implement update()")
     
-    def hurt(self, damage: int) -> None:
+    def get_distance(self, destination: Coordinates) -> float:
+        """Calculate Euclidean distance to destination."""
+
+        x1, y1 = self.coordinates
+        x2, y2 = destination
+        return ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+    
+    def get_adjacent_tiles(self) -> list[Coordinates]:
+        """Get all 8 adjacent tiles around current position."""
+
+        x, y = self.coordinates
+        adjacent = []
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                if dx != 0 or dy != 0:
+                    adjacent.append((x + dx, y + dy))
+        return adjacent
+    
+    def get_surrounding_tiles(self, radius: int) -> list[Coordinates]:
+        """Get all tiles within a radius around current position."""
+
+        x, y = self.coordinates
+        surrounding = []
+        for dx in range(-radius, radius + 1):
+            for dy in range(-radius, radius + 1):
+                if dx != 0 or dy != 0:
+                    surrounding.append((x + dx, y + dy))
+        return surrounding
+    
+    def hurt(self, world, damage: int, source: str) -> None:
+        """Inflict damage to the entity."""
         self.life -= damage
         if self.life <= 0:
-            self.die()
+            self.die(world, source)
     
     def heal(self, amount: int) -> None:
-        self.life += amount
+        """Heal the entity, not exceeding max life."""
+        self.life = min(self.max_life, self.life + amount)
 
     def die(self, world, reason) -> None:
+        """Handle entity death."""
         self.is_dead = True
         self.is_alive = False
     

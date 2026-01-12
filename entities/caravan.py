@@ -4,13 +4,26 @@ from entities.base.thinking import Thinking
 from entities.base.settlement import Settlement
 from typing import TYPE_CHECKING, Dict, Any
 
+from world import world
+
+
+if TYPE_CHECKING:
+    from world.world import World
+    from entities.city import City
+    from entities.village import Village
+
+
+CAMP_TRADE_DISTANCE = 2
+VILLAGE_TRADE_DISTANCE = 3
+CITY_TRADE_DISTANCE = 5
+
 
 class Caravan(Mobile, Thinking):
 
     def __init__(
         self,
         coordinates: Coordinates,
-        home: Settlement,
+        home: 'Village | City',
         destination: "Settlement | Coordinates",
         intent: str,
     ):
@@ -21,8 +34,19 @@ class Caravan(Mobile, Thinking):
         self.current_target: Coordinates = destination.coordinates if hasattr(destination, "coordinates") else destination
         self.path: list[Coordinates] = []
     
-    def die(self, world, reason):
-        super().die(world)
+    def die(self, world : 'World', reason):
+        super().die(world, reason)
+
+        if self in self.home.subsidiary_camps:
+            self.home.subsidiary_camps.remove(self)
+        if self.home.__class__.__name__ == "City" and self in self.home.subsidiary_villages:
+            self.home.subsidiary_villages.remove(self)
+        if "(" in self.intent:
+            coordinates = tuple(int(c) for c in self.intent.split("(")[1].split(")")[0].split(", "))
+            entities = world.get_entities_at(coordinates)
+            for entity in entities:
+                if entity.__class__.__name__ == 'Spirit':
+                    entity.is_occupied = False
 
     def is_passable(self, coordinates, world):
         """Check if a tile is passable (field, not through settlements)."""
@@ -40,25 +64,22 @@ class Caravan(Mobile, Thinking):
         
         return True
     
-    def is_nearby_target(self, world) -> bool:
+    def is_nearby_target(self) -> bool:
         """Check if caravan is nearby its current destination."""
-        if self.intent.startswith("establish_camp"):
-            # For camp establishment, need to be at exact location
+        if self.intent.startswith("settle"):
+            # For settlement intents, require exact match
             return self.coordinates == self.current_target
         elif self.intent == "trade":
             if self.destination.__class__.__name__ == "Camp":
-                return self.get_distance(self.current_target) <= 2
+                return self.get_distance(self.current_target) <= CAMP_TRADE_DISTANCE
             elif self.destination.__class__.__name__ == "Village":
-                return self.get_distance(self.current_target) <= 3
-            return self.get_distance(self.current_target) <= 5
-        else:
-            return self.coordinates == self.current_target
+                return self.get_distance(self.current_target) <= VILLAGE_TRADE_DISTANCE
+            return self.get_distance(self.current_target) <= CITY_TRADE_DISTANCE
     
     def approach_target(self, world) -> None:
         """Move one step along the path to the destination."""
         
         if not self.path and self.current_target:
-            # Caravans don't know if their destination is alive
             self.path = self.find_path(self.current_target, world)
         
         if self.path:
@@ -70,7 +91,7 @@ class Caravan(Mobile, Thinking):
 
         # Movement processed by Mobile
         super().update(world)
-        if self.state == "moving" and self.is_nearby_target(world):
+        if self.state == "moving" and self.is_nearby_target():
             self.state = "arrived"
 
         if self.state == "created":
@@ -80,24 +101,31 @@ class Caravan(Mobile, Thinking):
             else:
                 self.current_target = self.destination.coordinates
         elif self.state == "arrived":
-            # Handle camp establishment
-            if self.intent.startswith("establish_camp"):
-                # Parse the intent: "establish_camp:name:spirit_type"
-                parts = self.intent.split(":")
-                if len(parts) >= 2:
-                    camp_name = parts[1]
+            # Handle settlement
+            if self.intent.startswith("settle"):
+                if 'village' in self.intent:
+                    from entities import Village
+                    from world import generate_village_name
                     
-                    # Create the worker camp at current location
+                    village = Village(generate_village_name(), self.coordinates)
+                    world.add_entity(village)
+                    
+                    # Caravan completes its mission
+                    self.die(world, "success")
+                    return
+                
+                else:
                     from entities import Camp
-                    camp = Camp(camp_name, self.coordinates)
+
+                    camp = Camp(self.coordinates)
                     world.add_entity(camp)
                     
                     # Caravan completes its mission
-                    self.die(world, "camp_established")
+                    self.die(world, "success")
                     return
             
-            # Original trading logic
-            if hasattr(self.destination, 'is_alive') and self.destination.is_alive:
+            # Trade handling
+            elif self.destination.is_alive:
                 self.state = "trading"
                 self.loiter_counter = 40
             else:

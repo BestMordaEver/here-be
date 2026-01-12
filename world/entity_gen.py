@@ -1,7 +1,8 @@
 from typing import TYPE_CHECKING, List, Set, Tuple
 import random
+import math
 
-from entities import Spirit, Village
+from entities import Spirit, Village, Settlement
 
 if TYPE_CHECKING:
 	from world import World
@@ -61,6 +62,119 @@ def find_resource_nodes(world: 'World') -> dict[str, List[List[Tuple[int, int]]]
 	
 	return resource_nodes
 
+
+def _split_forest_node(node: List[Tuple[int, int]], max_distance: float = 25) -> List[List[Tuple[int, int]]]:
+	"""
+	Split a forest node into multiple sub-nodes if the maximum Euclidean distance exceeds threshold.
+	Uses k-means clustering to partition the forest into roughly equal parts.
+	"""
+	# Calculate maximum Euclidean distance between any two points
+	max_dist = 0
+	for i, p1 in enumerate(node):
+		for p2 in node[i+1:]:
+			dist = math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+			if dist > max_dist:
+				max_dist = dist
+	
+	# If max distance is within threshold, no split needed
+	if max_dist <= max_distance:
+		return [node]
+	
+	# Determine number of clusters based on max distance
+	num_clusters = max(2, int(max_dist / max_distance) + 1)
+	
+	# Simple k-means clustering
+	# Initialize centroids randomly from existing points
+	centroids = random.sample(node, min(num_clusters, len(node)))
+	
+	for iteration in range(10):  # 10 iterations should converge
+		# Assign each point to nearest centroid
+		clusters = [[] for _ in range(len(centroids))]
+		for point in node:
+			min_dist = float('inf')
+			closest_cluster = 0
+			for i, centroid in enumerate(centroids):
+				dist = math.sqrt((point[0] - centroid[0])**2 + (point[1] - centroid[1])**2)
+				if dist < min_dist:
+					min_dist = dist
+					closest_cluster = i
+			clusters[closest_cluster].append(point)
+		
+		# Update centroids to be the point closest to cluster average
+		new_centroids = []
+		for cluster in clusters:
+			if cluster:
+				avg_x = sum(p[0] for p in cluster) / len(cluster)
+				avg_y = sum(p[1] for p in cluster) / len(cluster)
+				# Find the point in the cluster closest to the average
+				min_dist = float('inf')
+				closest_point = cluster[0]
+				for point in cluster:
+					dist = math.sqrt((point[0] - avg_x)**2 + (point[1] - avg_y)**2)
+					if dist < min_dist:
+						min_dist = dist
+						closest_point = point
+				new_centroids.append(closest_point)
+		
+		centroids = new_centroids
+	
+	# Post-process: ensure each cluster is a single connected component
+	# If a cluster has disconnected regions, split them into separate clusters
+	final_clusters = []
+	for cluster in clusters:
+		if cluster:
+			connected_components = _split_into_connected_components(cluster)
+			final_clusters.extend(connected_components)
+	
+	# Return non-empty clusters
+	return [cluster for cluster in final_clusters if cluster]
+
+
+def _split_into_connected_components(tiles: List[Tuple[int, int]]) -> List[List[Tuple[int, int]]]:
+	"""
+	Split a list of tiles into connected components.
+	Two tiles are connected if they are 4-directionally adjacent.
+	"""
+	if not tiles:
+		return []
+	
+	tile_set = set(tiles)
+	visited = set()
+	components = []
+	
+	def flood_fill_component(start: Tuple[int, int]) -> List[Tuple[int, int]]:
+		"""Find all tiles connected to start tile."""
+		stack = [start]
+		component = []
+		
+		while stack:
+			tile = stack.pop()
+			
+			if tile in visited or tile not in tile_set:
+				continue
+			
+			visited.add(tile)
+			component.append(tile)
+			
+			# Check 4-directional neighbors
+			x, y = tile
+			for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+				neighbor = (x + dx, y + dy)
+				if neighbor in tile_set and neighbor not in visited:
+					stack.append(neighbor)
+		
+		return component
+	
+	# Find all connected components
+	for tile in tiles:
+		if tile not in visited:
+			component = flood_fill_component(tile)
+			if component:
+				components.append(component)
+	
+	return components
+
+
 def generate_spirits(world: 'World') -> None:
 	"""
 	Generate spirits on resource nodes after heightmap is created.
@@ -83,31 +197,43 @@ def generate_spirits(world: 'World') -> None:
 		for node in nodes:
 			# Check if node is large enough
 			if len(node) >= threshold:
-				# Find the most central tile - one with minimum total distance to all others
-				min_total_distance = float('inf')
-				spawn_coord = node[0]
+				# For forests, check if we need to split based on distance
+				sub_nodes = [node]
+				if biome == 'forest':
+					sub_nodes = _split_forest_node(node, max_distance=25)
 				
-				for candidate in node:
-					total_distance = 0
-					for tile in node:
-						# Manhattan distance
-						distance = abs(candidate[0] - tile[0]) + abs(candidate[1] - tile[1])
-						total_distance += distance
+				# Create spirits for each sub-node (or the original node if not split)
+				for sub_node in sub_nodes:
+					# Skip if sub-node is too small after splitting
+					if len(sub_node) < threshold:
+						continue
 					
-					if total_distance < min_total_distance:
-						min_total_distance = total_distance
-						spawn_coord = candidate
-				
-				# Create the spirit with life equal to node size
-				spirit = Spirit(
-					type=biome,
-					coordinates=spawn_coord,
-					life=len(node),
-					domain_area=len(node),
-					domain_tiles=node
-				)
-				
-				world.add_entity(spirit)
+					# Find the most central tile - one with minimum total distance to all others
+					min_total_distance = float('inf')
+					spawn_coord = sub_node[0]
+					
+					for candidate in sub_node:
+						total_distance = 0
+						for tile in sub_node:
+							# Manhattan distance
+							distance = abs(candidate[0] - tile[0]) + abs(candidate[1] - tile[1])
+							total_distance += distance
+						
+						if total_distance < min_total_distance:
+							min_total_distance = total_distance
+							spawn_coord = candidate
+					
+					life = len(sub_node) * 5 if biome != 'forest' else len(sub_node) * 10
+
+					# Create the spirit with life equal to node size
+					spirit = Spirit(
+						type=biome,
+						coordinates=spawn_coord,
+						life=life,
+						domain_tiles=sub_node
+					)
+					
+					world.add_entity(spirit)
 
 
 def check_village_spawn_area(world: 'World', center_x: int, center_y: int) -> bool:
@@ -123,8 +249,8 @@ def check_village_spawn_area(world: 'World', center_x: int, center_y: int) -> bo
 		return False
 	
 	# Check if entire 7x7 area is plains biome
-	for dy in range(-3, 4):
-		for dx in range(-3, 4):
+	for dy in range(-3, 3):
+		for dx in range(-3, 3):
 			x, y = center_x + dx, center_y + dy
 			height = world.height_map[y][x]
 			biome = world.get_biome_from_height(height)
@@ -132,18 +258,11 @@ def check_village_spawn_area(world: 'World', center_x: int, center_y: int) -> bo
 				return False
 	
 	# Check if any entity occupies this 7x7 area
-	for dy in range(-3, 4):
-		for dx in range(-3, 4):
+	for dy in range(-3, 3):
+		for dx in range(-3, 3):
 			x, y = center_x + dx, center_y + dy
-			# Check all entities
-			for entity in world.entities:
-				# For settlements, check if they occupy this tile
-				if hasattr(entity, 'occupies'):
-					if entity.occupies((x, y)):
-						return False
-				# For non-settlements, check coordinates directly
-				elif entity.coordinates == (x, y):
-					return False
+			if world.get_entities_at((x, y)):
+				return False
 	
 	return True
 
@@ -154,11 +273,8 @@ def check_settlement_distance(world: 'World', x: int, y: int, min_distance: int 
 	Returns True if far enough from all settlements, False otherwise.
 	"""
 	for entity in world.entities:
-		if hasattr(entity, 'settlement_type'):
-			# Calculate Manhattan distance to settlement center
-			ex, ey = entity.coordinates
-			distance = abs(x - ex) + abs(y - ey)
-			if distance < min_distance:
+		if issubclass(entity.__class__, Settlement):
+			if entity.get_distance((x,y)) < min_distance:
 				return False
 	return True
 
@@ -183,23 +299,20 @@ def attempt_spawn_village(world: 'World') -> bool:
 	Attempt to spawn a single village at a random location.
 	Returns True if successful, False if spawn failed.
 	"""
-	# Try up to 100 random locations
-	for _ in range(100):
-		x = random.randint(0, world.WIDTH - 1)
-		y = random.randint(0, world.HEIGHT - 1)
-		
-		# Check if far enough from settlements
-		if not check_settlement_distance(world, x, y, min_distance=20):
-			continue
-		
-		# Check if 7x7 area is valid
-		if not check_village_spawn_area(world, x, y):
-			continue
-		
-		# Spawn successful - create village
-		name = generate_village_name()
-		village = Village(name, (x, y))
-		world.add_entity(village)
-		return True
+
+	x = random.randint(0, world.WIDTH - 1)
+	y = random.randint(0, world.HEIGHT - 1)
 	
-	return False
+	# Check if far enough from settlements
+	if not check_settlement_distance(world, x, y, min_distance=20):
+		return False
+	
+	# Check if 7x7 area is valid
+	if not check_village_spawn_area(world, x, y):
+		return False
+	
+	# Spawn successful - create village
+	name = generate_village_name()
+	village = Village(name, (x, y))
+	world.add_entity(village)
+	return True

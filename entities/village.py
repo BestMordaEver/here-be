@@ -1,17 +1,50 @@
 """Village settlement."""
+from entities.base.expansion import ExpansionMixin
+from entities.base.named import Named
 from entities.base.settlement import Settlement
 from entities.base.entity import Coordinates
 from typing import List, Tuple, TYPE_CHECKING
 
+
 if TYPE_CHECKING:
     from entities.city import City
+    from entities.camp import Camp
+    from entities.caravan import Caravan
+    from world import World
 
 
-class Village(Settlement):
+WOOD_CONSUMPTION = 1
+RECOVERY_RATE = 1
+BASE_FOOD_GENERATION = 2
+CATTLE_FOOD_BONUS = 3
+CATTLE_FOOD_BONUS_RADIUS = 10
+WATER_FOOD_BONUS = 1
+WATER_FOOD_BONUS_INTERVAL = 10
+WATER_FOOD_BONUS_RADIUS = 10
+
+
+class Village(Settlement, ExpansionMixin):
     """3x3 village with fields, homes, and city square."""
     
     def __init__(self, name: str, coordinates: Coordinates):
-        super().__init__(name, coordinates, life=500, settlement_type="village")
+        super().__init__(coordinates, life=500)
+        Named.__init__(self, name)
+        self.storage_capacity = 200
+        self.last_fishing_cycle = -999  # Last cycle fishing bonus was applied
+        
+        # Expansion tracking
+        self.last_caravan_cycle = -999  # Last cycle a caravan was sent
+        self.subsidiary_camps: List['Camp | Caravan'] = []
+        self.spirit_fishing_bonus = None  # Cached dict of {spirit: fishing_bonus} (lazy init)
+
+    def get_max_camps(self) -> int:
+        return 3
+
+    def get_prioritized_resource(self) -> str:
+        return 'forest'
+
+    def get_prioritized_resource_count(self) -> int:
+        return 2
         
     def get_tiles(self) -> List[Tuple[Coordinates, str, str]]:
         """Return all 3x3 tiles for the village.
@@ -57,36 +90,63 @@ class Village(Settlement):
         city.life = self.life
         return city
     
-    def generate_resources(self, world) -> None:
+    def generate_resources(self, world : 'World') -> None:
         """Generate food resources each cycle.
         - Base: 3 food
         - +3 food for each cattle within 10 tiles
-        - +1 food for each water tile in a spirit's domain within 10 tiles
+        - +1 food for each water tile in a spirit's domain within 10 tiles (once per 10 cycles)
         """
         if self.is_dead:
             return
         
-        food_generated = 3  # Base food generation
+        food_generated = BASE_FOOD_GENERATION
         
-        x, y = self.coordinates
-        
-        # Check for cattle within 10 tiles (Manhattan distance)
+        # Check for cattle within 10 tiles
         for entity in world.entities:
-            if hasattr(entity, '__class__') and entity.__class__.__name__ == 'Cattle':
-                ex, ey = entity.coordinates
-                distance = abs(x - ex) + abs(y - ey)
-                if distance <= 10:
-                    food_generated += 3
+            if entity.__class__.__name__ == 'Cattle':
+                if self.get_distance(entity.coordinates) <= CATTLE_FOOD_BONUS_RADIUS:
+                    food_generated += CATTLE_FOOD_BONUS
         
-        # Check for water tiles within spirit domains within 10 tiles
-        for entity in world.entities:
-            if hasattr(entity, '__class__') and entity.__class__.__name__ == 'Spirit':
-                if entity.type == 'water' and hasattr(entity, 'domain_tiles'):
-                    # Count water tiles in spirit domain that are within 10 tiles
-                    for tile_x, tile_y in entity.domain_tiles:
-                        distance = abs(x - tile_x) + abs(y - tile_y)
-                        if distance <= 10:
-                            food_generated += 1
+        # Fishing bonus - only once every 10 cycles
+        if world.update_count - self.last_fishing_cycle >= WATER_FOOD_BONUS_INTERVAL:
+            # Lazy initialization of spirit fishing bonus cache
+            if self.spirit_fishing_bonus is None:
+                self.spirit_fishing_bonus = {}
+                
+                for entity in world.entities:
+                    if entity.__class__.__name__ == 'Spirit' and entity.type == 'water':
+                        # Calculate and cache fishing bonus for this spirit
+                        bonus = 0
+                        for tile_x, tile_y in entity.domain_tiles:
+                            if self.get_distance((tile_x, tile_y)) <= WATER_FOOD_BONUS_RADIUS:
+                                bonus += WATER_FOOD_BONUS
+                        if bonus > 0:
+                            self.spirit_fishing_bonus[entity] = bonus
+            
+            # Sum cached fishing bonuses for alive spirits
+            fishing_bonus = 0
+            for spirit, bonus in self.spirit_fishing_bonus.items():
+                if spirit.is_alive:
+                    fishing_bonus += bonus
+            
+            if fishing_bonus > 0:
+                food_generated += fishing_bonus
+                # Mark that we applied fishing bonus this cycle
+                self.last_fishing_cycle = world.update_count
         
         # Add generated food to storage (capped by capacity)
         self.add_resource('food', food_generated)
+
+    
+    def consume_resources(self, world: 'World') -> str:
+        """Villages consume 1 wood per cycle."""
+        if self.is_dead:
+            return
+        
+        wood_consumed = self.remove_resource('wood', WOOD_CONSUMPTION)
+        
+        # If couldn't consume enough wood, disrepair
+        if wood_consumed < WOOD_CONSUMPTION:
+            self.hurt(world, WOOD_CONSUMPTION - wood_consumed, 'disrepair')
+        else:
+            self.heal(RECOVERY_RATE)  # Heal 1 life if wood needs met

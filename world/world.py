@@ -1,6 +1,7 @@
 import random
 import threading
 import time
+import traceback
 from typing import List
 from world import HeightMapGenerator, attempt_spawn_village, generate_spirits
 
@@ -43,9 +44,7 @@ class World:
         if height < World.THRESHOLDS['forest']:
             return 'forest'
         return 'mountain'
-
     
-
     def add_entity(self, entity) -> None:
         """Add an entity to the world."""
         self.entities.append(entity)
@@ -57,7 +56,14 @@ class World:
     
     def get_entities_at(self, coordinates):
         """Get all entities at a specific coordinate."""
-        return [e for e in self.entities if e.coordinates == coordinates]
+        result = []
+        for e in self.entities:
+            if hasattr(e, 'occupies'):
+                if e.occupies(coordinates):
+                    result.append(e)
+            elif e.coordinates == coordinates:
+                result.append(e)
+        return result
     
     def should_update(self) -> bool:
         """Check if enough time has passed for an update."""
@@ -80,9 +86,8 @@ class World:
         for entity in self.entities:
             entity.update(self)
             # Check for dead camps
-            if hasattr(entity, 'settlement_type') and entity.settlement_type == 'worker_camp':
-                if entity.is_dead:
-                    self.remove_entity(entity)
+            if entity.__class__.__name__ == 'Camp' and entity.is_dead:
+                self.remove_entity(entity)
     
     def get_next_update_time(self) -> float:
         """Get seconds until next update."""
@@ -100,6 +105,7 @@ class World:
                 time.sleep(0.5)  # Check for updates twice per second
             except Exception as e:
                 print(f"Error in world update loop: {e}")
+                traceback.print_exc()
                 time.sleep(1)
 
     def start_update_thread(self) -> None:

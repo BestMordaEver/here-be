@@ -30,35 +30,6 @@ class Mobile(Entity):
         """Move towards destination. Override in subclasses for specific movement patterns."""
         raise NotImplementedError("Subclasses must implement approach_target()")
     
-    def get_distance(self, destination: Coordinates) -> float:
-        """Calculate Euclidean distance to destination."""
-
-        x1, y1 = self.coordinates
-        x2, y2 = destination
-        return ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
-    
-    def get_adjacent_tiles(self) -> list[Coordinates]:
-        """Get all 8 adjacent tiles around current position."""
-
-        x, y = self.coordinates
-        adjacent = []
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                if dx != 0 or dy != 0:
-                    adjacent.append((x + dx, y + dy))
-        return adjacent
-    
-    def get_surrounding_tiles(self, radius: int) -> list[Coordinates]:
-        """Get all tiles within a radius around current position."""
-
-        x, y = self.coordinates
-        surrounding = []
-        for dx in range(-radius, radius + 1):
-            for dy in range(-radius, radius + 1):
-                if dx != 0 or dy != 0:
-                    surrounding.append((x + dx, y + dy))
-        return surrounding
-    
     def move_to(self, new_coordinates: Coordinates, forego_debt: bool = False) -> None:
         """Move to a new coordinate, applying movement debt if diagonal."""
 
@@ -91,8 +62,7 @@ class Mobile(Entity):
             """Euclidean distance heuristic."""
             dx = abs(pos[0] - destination[0])
             dy = abs(pos[1] - destination[1])
-            # Use Chebyshev distance since we allow 8-directional movement
-            return max(dx, dy)
+            return (dx**2 + dy**2)**0.5
         
         # Priority queue: (f_score, counter, current, path)
         # counter ensures stable sorting when f_scores are equal
