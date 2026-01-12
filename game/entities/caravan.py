@@ -1,16 +1,9 @@
-from entities.base.mobile import Mobile
-from entities.base.entity import Coordinates
-from entities.base.thinking import Thinking
-from entities.base.settlement import Settlement
+from .base import Coordinates, Mobile, Thinking, Settlement
 from typing import TYPE_CHECKING, Dict, Any
 
-from world import world
-
-
 if TYPE_CHECKING:
-    from world.world import World
-    from entities.city import City
-    from entities.village import Village
+    from game.world import World
+    from . import Village, City
 
 
 CAMP_TRADE_DISTANCE = 2
@@ -104,8 +97,8 @@ class Caravan(Mobile, Thinking):
             # Handle settlement
             if self.intent.startswith("settle"):
                 if 'village' in self.intent:
-                    from entities import Village
-                    from world import generate_village_name
+                    from . import Village
+                    from game.world import generate_village_name
                     
                     village = Village(generate_village_name(), self.coordinates)
                     world.add_entity(village)
@@ -115,7 +108,7 @@ class Caravan(Mobile, Thinking):
                     return
                 
                 else:
-                    from entities import Camp
+                    from . import Camp
 
                     camp = Camp(self.coordinates)
                     world.add_entity(camp)

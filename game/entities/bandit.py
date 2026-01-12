@@ -1,6 +1,4 @@
-from entities.base.mobile import Mobile
-from entities.base.entity import Coordinates
-from entities.base.thinking import Thinking
+from .base import Coordinates, Mobile, Thinking
 
 
 class Bandit(Mobile, Thinking):

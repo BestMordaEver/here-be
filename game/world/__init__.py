@@ -1,6 +1,6 @@
-from world.heightmap import HeightMapGenerator
-from world.entity_gen import *
-from world.world import World
+from .heightmap import HeightMapGenerator
+from .entity_gen import *
+from .world import World
 
 __all__ = [
 	'HeightMapGenerator',

@@ -1,13 +1,11 @@
 """City settlement."""
-from entities.base.expansion import ExpansionMixin
-from entities.base.settlement import Settlement
-from entities.base.entity import Coordinates
-from typing import List, Tuple, TYPE_CHECKING, Optional
+from .base import Coordinates, ExpansionMixin, Settlement
+from typing import List, Tuple, TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from world import World
-    from entities import Camp, Village, Caravan
+    from game.world import World
+    from . import Camp, Village, Caravan
 
 
 class City(Settlement, ExpansionMixin):
@@ -192,7 +190,7 @@ class City(Settlement, ExpansionMixin):
             return False
         
         # Find a valid location for village (7x7 plains, no settlement distance limit for city villages)
-        from world.entity_gen import check_village_spawn_area, generate_village_name
+        from game.world import check_village_spawn_area
         
         # Try locations in expanding rings from city
         x, y = self.coordinates
@@ -205,7 +203,7 @@ class City(Settlement, ExpansionMixin):
                     # Check if valid for village (only check spawn area, ignore settlement distance)
                     if check_village_spawn_area(world, test_x, test_y):
                         # Valid location! Create caravan
-                        from entities import Caravan
+                        from . import Caravan
                         
                         caravan = Caravan(
                             coordinates=(self.coordinates[0], self.coordinates[1] + 2),

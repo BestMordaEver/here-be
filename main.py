@@ -1,8 +1,7 @@
 from flask import Flask, request
-from endpoints import api_bp, endpoints_bp
-from entities.dragon import Dragon
-from world import World
-from entities import Camp, Village, City
+from web.endpoints import api_bp, endpoints_bp
+from game.entities.dragon import Dragon
+from game.world import World
 from collections import defaultdict
 #import firebase_admin
 #from firebase_admin import credentials
@@ -11,7 +10,7 @@ from collections import defaultdict
 #firebase_admin.initialize_app(cred)
 
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='web/templates', static_folder='web/static')
 
 world = World()
 app.world = world  # Make world accessible to blueprints

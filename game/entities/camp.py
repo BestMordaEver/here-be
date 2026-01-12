@@ -1,13 +1,13 @@
 """Worker camp settlement."""
-from entities import Coordinates, Settlement
+from .base import Coordinates, Settlement
 from typing import List, Tuple, TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from world import World
-    from entities import Spirit
+    from game.world import World
+    from . import Spirit
 
-from entities.base.expansion import WOOD_CAMP_DISTANCE, ORE_CAMP_DISTANCE
+from .base.expansion import WOOD_CAMP_RANGE, ORE_CAMP_RANGE
 FOOD_CONSUMPTION = 2
 RECOVERY_RATE = 1
 WOOD_GATHER_RATE = 3
@@ -18,7 +18,7 @@ SPIRIT_HURT_RATE = 2
 class Camp(Settlement):
     """2x2 worker camp made of brown diamonds."""
     
-    def __init__(self, coordinates: Coordinates, spirit_coordinates: Coordinates):
+    def __init__(self, coordinates: Coordinates, spirit_coordinates: Coordinates = None):
         super().__init__(coordinates, life=200)
         self.storage_capacity = 100
         self.nearby_spirits : List['Spirit'] | None = None  # Cached list of nearby spirits (lazy init)
@@ -82,9 +82,9 @@ class Camp(Settlement):
             
             for entity in world.entities:
                 if entity.__class__.__name__ == 'Spirit':
-                    if entity.type == 'forest' and self.get_distance(entity.coordinates) <= WOOD_CAMP_DISTANCE:
+                    if entity.type == 'forest' and self.get_distance(entity.coordinates) <= WOOD_CAMP_RANGE:
                         self.nearby_spirits.append(entity)
-                    elif entity.type == 'mountain' and self.get_distance(entity.coordinates) <= ORE_CAMP_DISTANCE:
+                    elif entity.type == 'mountain' and self.get_distance(entity.coordinates) <= ORE_CAMP_RANGE:
                         self.nearby_spirits.append(entity)
         
         # Gather from cached spirits

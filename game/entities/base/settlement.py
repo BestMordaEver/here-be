@@ -1,11 +1,11 @@
 """Base settlement class for all settlement types."""
-from entities.base.entity import Entity, Coordinates
-from entities.base.expansion import ExpansionMixin
-from entities.base.thinking import Thinking
+from .entity import Entity, Coordinates
+from .expansion import ExpansionMixin
+from .thinking import Thinking
 from typing import Dict, Any, List, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from world import World
+    from game.world import World
 
 
 class Settlement(Entity, Thinking):
@@ -41,7 +41,7 @@ class Settlement(Entity, Thinking):
                 return True
         return False
     
-    def die(self, world, reason) -> None:
+    def die(self, world : 'World', reason) -> None:
         """Handle settlement death/depletion."""
         super().die(world, reason)
     
@@ -66,16 +66,16 @@ class Settlement(Entity, Thinking):
         self.resources[resource_type] = current - actual_remove
         return actual_remove
     
-    def generate_resources(self, world) -> None:
+    def generate_resources(self, world: 'World') -> None:
         """Generate resources based on settlement type. Override in subclasses."""
         raise NotImplementedError("Subclasses must implement generate_resources()")
     
-    def consume_resources(self) -> str:
+    def consume_resources(self, world: 'World') -> str:
         """Consume resources each cycle. Returns death reason if critical resources missing.
         Override in subclasses to define specific consumption needs."""
         raise NotImplementedError("Subclasses must implement consume_resources()")
     
-    def update(self, world) -> None:
+    def update(self, world: 'World') -> None:
         # Generate resources each cycle
         self.generate_resources(world)
         # Consume resources each cycle

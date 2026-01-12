@@ -2,10 +2,10 @@ from typing import TYPE_CHECKING, List, Set, Tuple
 import random
 import math
 
-from entities import Spirit, Village, Settlement
+from game.entities import Spirit, Village, Settlement
 
 if TYPE_CHECKING:
-	from world import World
+	from . import World
 
 
 def find_resource_nodes(world: 'World') -> dict[str, List[List[Tuple[int, int]]]]:

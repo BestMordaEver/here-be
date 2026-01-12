@@ -3,7 +3,7 @@ import threading
 import time
 import traceback
 from typing import List
-from world import HeightMapGenerator, attempt_spawn_village, generate_spirits
+from . import HeightMapGenerator, attempt_spawn_village, generate_spirits
 
 class World:
 

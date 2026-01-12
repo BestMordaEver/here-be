@@ -1,6 +1,6 @@
 """Mobile entity base class - entities that can move and have states."""
 from typing import Optional
-from entities.base.entity import Entity, Coordinates
+from .entity import Entity, Coordinates
 import heapq
 
 sqrt2 = 2 ** 0.5

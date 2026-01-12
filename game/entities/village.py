@@ -1,16 +1,11 @@
 """Village settlement."""
-from entities.base.expansion import ExpansionMixin
-from entities.base.named import Named
-from entities.base.settlement import Settlement
-from entities.base.entity import Coordinates
+from .base import Coordinates, Named, Settlement, ExpansionMixin
 from typing import List, Tuple, TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from entities.city import City
-    from entities.camp import Camp
-    from entities.caravan import Caravan
-    from world import World
+    from . import City, Camp, Caravan
+    from game.world import World
 
 
 WOOD_CONSUMPTION = 1
@@ -85,7 +80,7 @@ class Village(Settlement, ExpansionMixin):
     
     def promote_to_city(self) -> 'City':
         """Promote this village to a city."""
-        from entities.city import City
+        from .city import City
         city = City(self.name, self.coordinates)
         city.life = self.life
         return city

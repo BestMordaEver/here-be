@@ -1,6 +1,4 @@
-from entities.base.mobile import Mobile
-from entities.base.entity import Coordinates
-from entities.base.settlement import Settlement
+from .base import Coordinates, Mobile, Settlement
 import random
 
 class Cattle(Mobile):

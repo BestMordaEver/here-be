@@ -1,10 +1,10 @@
 """Spirit base class - stationary entities with domain areas."""
 from typing import TYPE_CHECKING, List, Tuple
-from entities.base.entity import Entity, Coordinates
+from .base import Entity, Coordinates
 
 
 if TYPE_CHECKING:
-    from entities.dragon import Dragon
+    from .dragon import Dragon
 
 
 # Shared recovery rates for all spirits

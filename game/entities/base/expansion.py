@@ -1,14 +1,14 @@
 """Mixin for settlement expansion logic."""
 from typing import Optional, TYPE_CHECKING
-from entities.base.named import Named
+from .named import Named
 
 if TYPE_CHECKING:
-    from entities.base.entity import Coordinates
-    from world import World
+    from .entity import Coordinates
+    from game.world import World
 
 
-WOOD_CAMP_DISTANCE = 6
-ORE_CAMP_DISTANCE = 10
+WOOD_CAMP_RANGE = 6
+ORE_CAMP_RANGE = 10
 
 
 class ExpansionMixin(Named):
@@ -41,7 +41,7 @@ class ExpansionMixin(Named):
                 if x < 0 or y < 0 or x >= world.WIDTH - 1 or y >= world.HEIGHT - 1:
                     continue
                 
-                from world import check_settlement_distance
+                from game.world import check_settlement_distance
 
                 # Check if at least 10 tiles from any settlement
                 if not check_settlement_distance(world, x, y, min_distance=10):
@@ -156,7 +156,7 @@ class ExpansionMixin(Named):
                 continue  # Too far from mountain spirit
             
             # Valid location found! Create caravan
-            from entities import Caravan
+            from game.entities import Caravan
             
             # Create the caravan with intent to establish camp
             caravan = Caravan(

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>World</title>
-    <link rel="stylesheet" href="/static/world.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='world.css') }}">
 </head>
 <body>
     <div class="accessibility-menu">
@@ -39,6 +39,6 @@
     <script>
         const heightMap = {{ height_map | safe }};
     </script>
-    <script type="module" src="/static/world/world.js"></script>
+    <script type="module" src="{{ url_for('static', filename='world/world.js') }}"></script>
 </body>
 </html>

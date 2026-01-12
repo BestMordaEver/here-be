@@ -1,15 +1,11 @@
 from math import atan2, degrees
 from random import randint
 from typing import TYPE_CHECKING, Dict, Any
-from entities.base.mobile import Mobile
-from entities.base.entity import Coordinates
-from entities.base.named import Named
-from entities.base.thinking import Thinking
+from .base import Coordinates, Mobile, Named, Thinking
 
 
 if TYPE_CHECKING:
-    from world import World
-
+    from game.world import World
 
 
 class Dragon(Mobile, Named, Thinking):
