@@ -35,6 +35,9 @@ class Caravan(Mortal, Mobile, Thinking):
         if self.home.__class__.__name__ == "City" and self in self.home.subsidiary_villages:
             self.home.subsidiary_villages.remove(self)
         if "(" in self.intent:
+            if reason == "success":
+                return # Successful mission, do not free spirit
+            
             coordinates = tuple(int(c) for c in self.intent.split("(")[1].split(")")[0].split(", "))
             entities = world.get_entities_at(coordinates)
             for entity in entities:
@@ -101,6 +104,7 @@ class Caravan(Mortal, Mobile, Thinking):
                     from game.world import generate_village_name
                     
                     village = Village(generate_village_name(), self.coordinates)
+                    self.home.subsidiary_villages.append(village)
                     world.add_entity(village)
                     
                     # Caravan completes its mission
@@ -111,6 +115,7 @@ class Caravan(Mortal, Mobile, Thinking):
                     from . import Camp
 
                     camp = Camp(self.coordinates)
+                    self.home.subsidiary_camps.append(camp)
                     world.add_entity(camp)
                     
                     # Caravan completes its mission
