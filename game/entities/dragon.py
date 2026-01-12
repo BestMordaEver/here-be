@@ -8,6 +8,11 @@ if TYPE_CHECKING:
     from game.world import World
 
 
+# Dragon constants
+STARTING_LIFE = 500  # Dragon starting HP
+LOITER_TIME = 0  # Dragons don't loiter (move every cycle)
+
+
 class Dragon(Mortal, Mobile, Named, Thinking):
 
     def __init__(
@@ -51,10 +56,10 @@ class Dragon(Mortal, Mobile, Named, Thinking):
             self.domain = "flame"
 
 
-        Mobile.__init__(self, color, chars[0], coordinates, 500)
+        Mobile.__init__(self, color, chars[0], coordinates, STARTING_LIFE)
         Named.__init__(self, name)
         Thinking.__init__(self)
-        self.loiter = 0
+        self.loiter = LOITER_TIME
         self.move_error = 0.0  # Track error for line approximation
         self.base_rotation = base_rotation
         self.rotation = base_rotation  # Current rotation angle in degrees
@@ -130,6 +135,9 @@ class Dragon(Mortal, Mobile, Named, Thinking):
         self.move_to((self.coordinates[0] + dx, self.coordinates[1] + dy), self.type == "blade")
     
     def update(self, world: "World") -> None:
+        
+        # Generate thoughts occasionally
+        self.generate_thought(world)
         
         super().update(world)
 
