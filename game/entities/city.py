@@ -5,15 +5,23 @@ from typing import List, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from game.world import World
-    from . import Camp, Village, Caravan
+    from . import Camp, Village, Caravan, Spire
+
+
+# City constants
+STARTING_LIFE = 1000  # City starting HP
+STORAGE_CAPACITY = 200  # City storage capacity
+SPIRE_TREASURE_THRESHOLD = 200  # Treasure needed to spawn spire
+HERO_SPAWN_INTERVAL = 50  # Cycles between hero spawns
+HERO_ORE_REQUIREMENT = 40  # Ores needed to spawn hero
 
 
 class City(Settlement, ExpansionMixin):
     """5x5 city with walls, gates, buildings, and roads."""
     
     def __init__(self, name: str, coordinates: Coordinates):
-        super().__init__(name, coordinates, life=1000)
-        self.storage_capacity = 200
+        super().__init__(name, coordinates, life=STARTING_LIFE)
+        self.storage_capacity = STORAGE_CAPACITY
         self.village_created_on_promotion = False  # Track if village was created on promotion
         self.village_created_on_excess_wood = False  # Track if village was created with excess wood
         
@@ -21,6 +29,10 @@ class City(Settlement, ExpansionMixin):
         self.last_caravan_cycle = -999  # Last cycle a caravan was sent
         self.subsidiary_camps: List['Camp | Caravan'] = []
         self.subsidiary_villages: List['Village | Caravan'] = []
+        
+        # Spire and hero tracking
+        self.spire: 'Spire' = None
+        self.last_hero_spawn_cycle = -999
         
     def get_tiles(self) -> List[Tuple[Coordinates, str, str]]:
         """Return all 5x5 tiles for the city.
@@ -114,7 +126,7 @@ class City(Settlement, ExpansionMixin):
         return 4
 
     def get_prioritized_spirit_type(self) -> str:
-        return 'mountain'
+        return 'ore'
 
     def get_required_resource_type_count(self) -> int:
         return 2
@@ -181,6 +193,62 @@ class City(Settlement, ExpansionMixin):
         
         # Third priority: Create worker camps
         super().expand_settlement(world)
+        
+        # Fourth priority: Spawn heroes when excess ores
+        if self.spire and self.has_excess('ores'):
+            if world.update_count - self.last_hero_spawn_cycle >= HERO_SPAWN_INTERVAL:
+                if self.resources['ores'] >= HERO_ORE_REQUIREMENT:
+                    self._spawn_hero(world)
+        
+        # Fifth priority: Create spire when treasure threshold reached
+        if self.spire is None and self.resources['treasure'] >= SPIRE_TREASURE_THRESHOLD:
+            self._attempt_create_spire(world)
+    
+    def _attempt_create_spire(self, world: 'World') -> bool:
+        """Attempt to create a spire near the city."""
+        from . import Spire
+        
+        # Find adjacent tile for spire (prefer corners outside walls)
+        x, y = self.coordinates
+        spire_locations = [
+            (x + 3, y - 3),  # Top right corner
+            (x - 3, y - 3),  # Top left corner
+            (x + 3, y + 3),  # Bottom right corner
+            (x - 3, y + 3),  # Bottom left corner
+        ]
+        
+        for loc in spire_locations:
+            # Check if location is valid (plains, unoccupied)
+            lx, ly = loc
+            if lx < 0 or ly < 0 or lx >= world.WIDTH or ly >= world.HEIGHT:
+                continue
+            
+            height = world.height_map[ly][lx]
+            if world.get_biome_from_height(height) != 'field':
+                continue
+            
+            if world.get_entities_at(loc):
+                continue
+            
+            # Valid location found
+            spire = Spire(loc, self)
+            world.add_entity(spire)
+            self.spire = spire
+            return True
+        
+        return False
+    
+    def _spawn_hero(self, world: 'World') -> None:
+        """Spawn a hero from the city."""
+        from . import Hero
+        
+        # Spawn at city gate
+        hero = Hero((self.coordinates[0], self.coordinates[1] + 3), self)
+        world.add_entity(hero)
+        
+        # Consume ores for hero equipment
+        self.remove_resource('ores', 20)
+        self.last_hero_spawn_cycle = world.update_count
 
     
     def _attempt_create_village(self, world: 'World') -> bool:

@@ -7,6 +7,8 @@ from .camp import Camp
 from .village import Village
 from .city import City
 from .spirit import Spirit
+from .spire import Spire
+from .hero import Hero
 
 __all__ = [
     "Entity",
@@ -24,4 +26,6 @@ __all__ = [
     "Village",
     "City",
     "Spirit",
+    "Spire",
+    "Hero",
 ]

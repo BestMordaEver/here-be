@@ -8,8 +8,10 @@ __all__ = [
 	'find_resource_nodes',
 	'attempt_spawn_village',
 	'attempt_spawn_cattle',
+	'attempt_spawn_city',
 	'generate_spirits',
 	'generate_village_name',
 	'check_village_spawn_area',
+	'check_city_spawn_area',
 	'check_settlement_distance',
 ]
