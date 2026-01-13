@@ -19,7 +19,8 @@ class Cattle(Mortal, Mobile):
         coordinates: Coordinates,
         life: int,
     ):
-        super().__init__(color, 'ɤ', coordinates, life, state="grazing", intent="foraging")
+        super().__init__(color, 'ɤ', coordinates, life)
+        self.state="grazing"
         self.loiter = LOITER_TIME
         self.path: list[Coordinates] = []  # Current path to follow
     

@@ -26,7 +26,7 @@ STARTING_LIFE = 500  # Village starting HP
 STORAGE_CAPACITY = 200  # Village storage capacity
 
 
-class Village(Settlement, ExpansionMixin):
+class Village(Settlement, ExpansionMixin, Named):
     """3x3 village with fields, homes, and city square."""
     
     def __init__(self, name: str, coordinates: Coordinates):

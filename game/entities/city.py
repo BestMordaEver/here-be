@@ -1,5 +1,5 @@
 """City settlement."""
-from .base import Coordinates, ExpansionMixin, Settlement
+from .base import Coordinates, ExpansionMixin, Settlement, Named
 from typing import List, Tuple, TYPE_CHECKING
 
 
@@ -16,11 +16,12 @@ HERO_SPAWN_INTERVAL = 50  # Cycles between hero spawns
 HERO_ORE_REQUIREMENT = 40  # Ores needed to spawn hero
 
 
-class City(Settlement, ExpansionMixin):
+class City(Settlement, ExpansionMixin, Named):
     """5x5 city with walls, gates, buildings, and roads."""
     
     def __init__(self, name: str, coordinates: Coordinates):
-        super().__init__(name, coordinates, life=STARTING_LIFE)
+        super().__init__(coordinates, life=STARTING_LIFE)
+        Named.__init__(self, name)
         self.storage_capacity = STORAGE_CAPACITY
         self.village_created_on_promotion = False  # Track if village was created on promotion
         self.village_created_on_excess_wood = False  # Track if village was created with excess wood
@@ -125,10 +126,10 @@ class City(Settlement, ExpansionMixin):
     def get_max_camps(self) -> int:
         return 4
 
-    def get_prioritized_spirit_type(self) -> str:
+    def get_prioritized_resource(self) -> str:
         return 'ore'
 
-    def get_required_resource_type_count(self) -> int:
+    def get_prioritized_resource_count(self) -> int:
         return 2
     
     def generate_resources(self, world):
