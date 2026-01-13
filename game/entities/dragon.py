@@ -1,16 +1,20 @@
 from math import atan2, degrees
-from random import randint
+from random import randint, choice
 from typing import TYPE_CHECKING, Dict, Any
 from .base import Coordinates, Mobile, Named, Thinking, Mortal
 
 
 if TYPE_CHECKING:
     from game.world import World
+    from . import Domain
 
 
 # Dragon constants
 STARTING_LIFE = 500  # Dragon starting HP
 LOITER_TIME = 0  # Dragons don't loiter (move every cycle)
+MAX_AGE = 1000  # Dragon dies of old age after this many cycles
+TREASURE_GENERATION_BASE = 1  # Base treasure per cycle
+TREASURE_GENERATION_MIDAS = 3  # Midas treasure per cycle
 
 
 class Dragon(Mortal, Mobile, Named, Thinking):
@@ -21,6 +25,8 @@ class Dragon(Mortal, Mobile, Named, Thinking):
         properties: list[str],
         coordinates: Coordinates,
     ):
+        self.properties = properties
+
         if "serpent" in properties:
             chars = ['Ȿ', 'Ɀ']
             self.type = "serpent"
@@ -44,16 +50,12 @@ class Dragon(Mortal, Mobile, Named, Thinking):
         
         if "aquatic" in properties:
             color = "#004080"
-            self.domain = "aquatic"
         elif "mountain" in properties:
             color = "#808080"
-            self.domain = "mountain"
         elif "verdant" in properties:
             color = "#008000"
-            self.domain = "verdant"
-        elif "flame" in properties:
+        elif "scorched" in properties:
             color = "#800000"
-            self.domain = "flame"
 
 
         Mobile.__init__(self, color, chars[0], coordinates, STARTING_LIFE)
@@ -63,6 +65,38 @@ class Dragon(Mortal, Mobile, Named, Thinking):
         self.move_error = 0.0  # Track error for line approximation
         self.base_rotation = base_rotation
         self.rotation = base_rotation  # Current rotation angle in degrees
+        
+        # Store properties
+        self.properties = properties
+        self.is_scorched = "scorched" in properties
+        self.is_carnivore = "carnivore" in properties
+        self.is_herbivore = "herbivore" in properties
+        self.is_greed = "greed" in properties
+        self.is_anthropophage = "anthropophage" in properties
+        self.is_good = "good" in properties
+        self.is_evil = "evil" in properties
+        self.is_territorial = "territorial" in properties
+        
+        # Dragon state
+        self.age = 0  # Cycles alive
+        self.domain_entity: 'Domain' = None  # Will be created when dragon is added to world
+        self.food = 50  # Starting food
+        self.current_want = "idle"  # Current desire/goal
+        
+        # Dragon state
+        self.age = 0  # Cycles alive
+        self.domain_entity: 'Domain' = None  # Will be created when dragon is added to world
+        self.food = 50  # Starting food
+        self.current_want = "idle"  # Current desire/goal
+    
+    def create_domain(self, world: 'World') -> None:
+        """Create the dragon's domain at their spawn location."""
+        if self.domain_entity is not None:
+            return  # Already has domain
+        
+        from . import Domain
+        self.domain_entity = Domain(self.coordinates, self, self.is_scorched)
+        world.add_entity(self.domain_entity)
     
     def choose_target(self, world) -> None:
         pass
@@ -135,6 +169,24 @@ class Dragon(Mortal, Mobile, Named, Thinking):
         self.move_to((self.coordinates[0] + dx, self.coordinates[1] + dy), self.type == "blade")
     
     def update(self, world: "World") -> None:
+        # Create domain on first update if not exists
+        if self.domain_entity is None:
+            self.create_domain(world)
+        
+        # Age the dragon
+        self.age += 1
+        
+        # Die of old age
+        if self.age >= MAX_AGE:
+            self.die(world, "old age")
+            return
+        
+        # Generate treasure (domain accumulates it)
+        if self.domain_entity and self.domain_entity.is_alive:
+            if self.type == "midas":
+                self.domain_entity.treasure += TREASURE_GENERATION_MIDAS
+            else:
+                self.domain_entity.treasure += TREASURE_GENERATION_BASE
         
         # Generate thoughts occasionally
         self.generate_thought(world)
@@ -150,7 +202,9 @@ class Dragon(Mortal, Mobile, Named, Thinking):
         data = super().serialize()
         data["name"] = self.name
         data["type"] = self.type
-        data["domain"] = self.domain
+        data["age"] = self.age
+        data["food"] = self.food
         data["rotation"] = self.rotation
-        data["debug_info"] = f"{self.name} type {self.type} rotation {self.rotation:.1f}°"
+        data["current_want"] = self.current_want
+        data["debug_info"] = f"{self.name} {self.type} age {self.age}, want: {self.current_want}"
         return data

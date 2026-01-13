@@ -18,7 +18,7 @@ app.world = world  # Make world accessible to blueprints
 dragon1 = Dragon("Jielle", ["serpent", "aquatic"], (180, 180))
 dragon2 = Dragon("Thrax", ["brute", "mountain"], (20, 200))
 dragon3 = Dragon("Sylph", ["blade", "verdant"], (10, 30))
-dragon4 = Dragon("Ember", ["druid", "flame"], (10, 50))
+dragon4 = Dragon("Ember", ["druid", "scorched"], (10, 50))
 dragon5 = Dragon("Aurelia", ["midas", "mountain"], (25, 25))
 
 dragon1.state = "arrived"

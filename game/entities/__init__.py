@@ -9,6 +9,7 @@ from .city import City
 from .spirit import Spirit
 from .spire import Spire
 from .hero import Hero
+from .domain import Domain
 
 __all__ = [
     "Entity",
@@ -28,4 +29,5 @@ __all__ = [
     "Spirit",
     "Spire",
     "Hero",
+    "Domain",
 ]

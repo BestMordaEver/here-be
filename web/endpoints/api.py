@@ -42,8 +42,24 @@ def get_world():
     # Force update check
     world.update()
     
+    # Serialize all entities
+    serialized_entities = []
+    for entity in world.entities:
+        data = entity.serialize()
+        
+        # For Domain entities, populate scorched terrain overlay
+        if entity.__class__.__name__ == 'Domain':
+            overlay_dict = entity.get_scorched_terrain_overlay(world)
+            # Convert to JSON-friendly format
+            data["scorched_terrain_overlay"] = {
+                str(coords): [symbol, color] 
+                for coords, (symbol, color) in overlay_dict.items()
+            }
+        
+        serialized_entities.append(data)
+    
     return jsonify({
-        "entities": [entity.serialize() for entity in world.entities],
+        "entities": serialized_entities,
         "update_count": world.update_count,
         "timestamp": time.time(),
         "next_update_in": world.get_next_update_time(),

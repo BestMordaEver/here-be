@@ -167,7 +167,7 @@ function prerenderTerrainFrames() {
 }
 
 // Render static terrain
-export function renderTerrain(heightMap) {
+export function renderTerrain(heightMap, domainBackgrounds = []) {
     const startTime = performance.now();
     
     if (terrainData.length === 0) {
@@ -199,6 +199,16 @@ export function renderTerrain(heightMap) {
                 backgroundCtx.fillRect(px, py, CELL_WIDTH, CELL_HEIGHT);
             }
         }
+        
+        // Render domain backgrounds on top of terrain backgrounds
+        domainBackgrounds.forEach(bg => {
+            const [x, y] = bg.coords;
+            const px = x * CELL_WIDTH;
+            const py = y * CELL_HEIGHT;
+            
+            backgroundCtx.fillStyle = bg.color;
+            backgroundCtx.fillRect(px, py, CELL_WIDTH, CELL_HEIGHT);
+        });
     }
     
     const endTime = performance.now();
@@ -206,7 +216,7 @@ export function renderTerrain(heightMap) {
 }
 
 // Render animated terrain characters
-export function renderTerrainChars(timestamp, heightMap, entityMap) {
+export function renderTerrainChars(timestamp, heightMap, entityMap, scorchedOverlays = new Map()) {
     terrainAnimPhase = (timestamp / 1500) % 1;
     
     // Clear terrain canvas
@@ -216,6 +226,20 @@ export function renderTerrainChars(timestamp, heightMap, entityMap) {
     if (displayOptions.terrainChars) {
         const sourceFrame = terrainAnimPhase < 0.5 && displayOptions.entityAnimation ? terrainFrame0 : terrainFrame1;
         terrainCtx.drawImage(sourceFrame, 0, 0);
+        
+        // Clear and render scorched terrain overlays (replaces underlying terrain)
+        scorchedOverlays.forEach((overlay, key) => {
+            const [x, y] = overlay.coords;
+            const px = x * CELL_WIDTH;
+            const py = y * CELL_HEIGHT;
+            
+            // Clear the original terrain first
+            terrainCtx.clearRect(px, py, CELL_WIDTH, CELL_HEIGHT);
+            
+            // Draw scorched overlay
+            terrainCtx.fillStyle = overlay.color;
+            terrainCtx.fillText(overlay.symbol, px + CELL_WIDTH * 0.25, py + CELL_HEIGHT * 0.75);
+        });
         
         // Clear terrain characters where entities are
         if (displayOptions.showEntities) {

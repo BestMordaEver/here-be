@@ -5,6 +5,8 @@ let entityCanvas, entityCtx;
 
 // Store entity data
 export let entityMap = new Map();
+export let domainBackgrounds = [];
+export let scorchedOverlays = new Map();
 
 // Animation tracking
 let pulsePhase = 0;
@@ -99,9 +101,28 @@ export async function updateEntities() {
         const data = await response.json();
         
         entityMap.clear();
+        domainBackgrounds = [];
+        scorchedOverlays.clear();
         
         if (data.entities) {
             data.entities.forEach(entity => {
+                // Store domain background tiles if present
+                if (entity.background_tiles && Array.isArray(entity.background_tiles)) {
+                    entity.background_tiles.forEach(bgTile => {
+                        const [coords, bgColor] = bgTile;
+                        domainBackgrounds.push({ coords, color: bgColor });
+                    });
+                }
+                
+                // Store scorched terrain overlays if present
+                if (entity.scorched_terrain_overlay && typeof entity.scorched_terrain_overlay === 'object') {
+                    Object.entries(entity.scorched_terrain_overlay).forEach(([coordStr, overlayData]) => {
+                        const coords = coordStr.replace('(', '').replace(')', '').split(', ').map(Number);
+                        const [symbol, color] = overlayData;
+                        scorchedOverlays.set(`${coords[0]},${coords[1]}`, { symbol, color, coords });
+                    });
+                }
+                
                 if (entity.tiles && Array.isArray(entity.tiles)) {
                     entity.tiles.forEach(tile => {
                         const [coords, symbol, color] = tile;

@@ -1,83 +1,98 @@
 ❌ not done, ➕ done, 〰 partially done
 
-# Map 〰
-- generate terrain ➕
-- generate the city, two villages and the spire ❌
-- generate spirits ❌
+# Map ➕
+- generate terrain (perlin noise heightmap) ➕
+- generate villages (spawn 5 on init, then 5 more every 200 cycles at random plains locations) ➕
+- generate initial city (11x11 plains check, starts with 150 food, 50 wood, 30 ores, 10 treasure) ➕
+- generate spirits (on init; water/mountain >=5 tiles, forest >=10 tiles; forests split by k-means if >25 tiles apart) ➕
 - pretty 〰
 - accessibility ❌
 
 # Mobile entities ➕
-- movement logic ➕
-- diagonal movement penalty ➕
-- pathfinding ➕
+- movement logic (state machine: created→moving→arrived) ➕
+- diagonal movement penalty (sqrt(2)-1 debt accumulation, skip turn when >=1) ➕
+- pathfinding (A* with Euclidean heuristic, diagonal cost sqrt(2)) ➕
 
-# Thinking entities ❌
-- action thoughts ❌
-- intent thoughts ❌
-- idle thoughts ❌
+# Thinking entities ➕
+- intent property ➕
+- thoughts list (append via think(), max 20 kept) ➕
+- action/intent/idle thought generation (random every 10-30 cycles based on state/intent) ➕
 
 # Entity types 〰
-- spirits and cattle 〰
-* spirits instantly spawn during generation ❌
-* cattle spawn periodically (how often? threshold?) ❌
-* cattle wander randomly until tamed ➕
+- spirits and cattle ➕
+* spirits spawn during generation at most central tile, life = tiles * 5 (forest) or * 10 (water/mountain) ➕
+* spirits recover naturally (+1/cycle) or when tended (+3) ➕
+* cattle spawn every 50 cycles, max 20 in world, random plains location ➕
+* cattle wander randomly, gravitate toward villages within 10 tiles ➕
 
 - settlements 〰
-* villages and cities send out worker caravans when they have excess food ❌
-* settlements trade off excess ❌
-* settlements consume food ❌
-* settlements start to starve if they don't have food ❌
-* worker camps produce wood or ores ❌
-* villages produce food ❌
-* villages produce more food if in proximity of cattle or water spirit ❌
-* villages can evolve to cities if they have excess wood and some ores ❌
-* villages and cities consume wood ❌
-* villages and cities start to fall into disrepair if they don't have wood ❌
-* cities consume ores ❌
-* cities start to fall into disrepair if they don't have ores ❌
-* cities produce valuables when they have excess ores ❌
-* cities periodically spawn heroes when they have excess ores ❌
-* cities spawn spires when they reach a valuables threshold ❌
+* villages send worker caravans when excess food (>50% capacity) ➕
+* cities send caravans for worker camps (up to 4) and villages (up to 2) ➕
+* trade caravans carry cargo (30 capacity), deliver food to camps, pick up wood/ores ➕
+* camps consume 2 food/cycle, starve if insufficient ➕
+* cities consume 3 food/cycle, starve if insufficient ➕
+* villages do not consume food ➕
+* worker camps produce 3 wood or 3 ores/cycle, hurt spirits by 2/cycle ➕
+* villages produce 2 food base + 3/cattle within 10 tiles + water spirit fishing bonus every 10 cycles ➕
+* villages evolve to cities when excess wood (>50%) and ores >= 20 ➕
+* villages consume 1 wood/cycle, take disrepair damage if insufficient ➕
+* cities consume 2 wood and 1 ore/cycle, take disrepair damage if insufficient ➕
+* cities produce 1 treasure base + 2 if excess ores ➕
+* cities spawn heroes every 100 cycles when spire exists and excess ores (consume 10 ores) ➕
+* cities spawn spires when treasure >= 50 (at adjacent corner outside walls) ➕
 * ruined cities and villages produce a single bandit pack ❌
-* ruined worker camps disappear ➕
+* ruined worker camps disappear (via Mortal mixin) ➕
 
-- spire ❌
-* enable users to summon dragons ❌
-* consume ores and valuables ❌
-* start to fall into disrepair if doesn't have ores or valuables ❌
+- spire ➕
+* gold tower "Ї" ("1" if ruined), single tile near city ➕
+* shares resources with parent city (no caravan needed) ➕
+* consume 1 ore + 1 treasure every 10 cycles from city ➕
+* take disrepair damage if resources insufficient ➕
+* enable users to summon dragons via summon_dragon() method ➕
 
-- caravans 〰
-* if sent to trade - approach the settlement and loiter until done trading 〰
-* if sent to settle - approach the point and create camp ❌
+- caravans ➕
+* if sent to trade - approach settlement, transfer 4 resources/cycle, die(success) when empty ➕
+* if sent to settle camp - pathfind to location, create Camp, die(success) ➕
+* if sent to settle village - pathfind to location, create Village, die(success) ➕
+* flee to nearest settlement if target dies ➕
+* camps send return caravans with wood/ores (no food cost) ➕
 
-- bandits ❌
-* hide in forests ❌
-* consume food ❌
-* attack nearby caravans when in mood ❌
-* attack nearby villages when low on food ❌
+- bandits ➕
+* hide in forests (pathfind to nearest forest when idle) ➕
+* consume 1 food/cycle, starve damage if empty ➕
+* attack nearby caravans (30% chance within 8 tiles, 10 damage, steal cargo) ➕
+* attack nearby villages when hungry (food < 10, steal 10 food, 5 damage) ➕
 
-- heroes ❌
-* heal in cities and villages ❌
-* protect caravans ❌
-* rush to protect nearby villages and cities if they are attacked ❌
-* create parties of 3-5 heroes to defeat dragons ❌
+- heroes ➕
+* heal in cities and villages (+2 HP/cycle) ➕
+* escort caravans from home city (priority after threats, before dragon hunting) ➕
+* protect caravans ➕
+* rush to protect nearby villages and cities if they are attacked ➕
+* create parties of 3-5 heroes to defeat dragons ➕
 * seek out dragon treasuries left by dead dragons and send caravans with treasure ❌
 
-- dragons 〰
-* summoned by user requests ❌
-* create a domain at spawn location ❌
-* scorched create a wasteland around their domain ❌
-* color depends on domain location ❌
-* carnivores consume cattle or fish ❌
+- dragons ➕
+* summoned via spire.summon_dragon(name, properties) ➕
+* create domain "ʘ" at spawn location (single tile, color matches dragon) ➕
+* scorched domains project circle radius 10 with terrain changes and background color ➕
+  - water→cracked bed (ʬ), grass→ash (…), forest→burnt (ɹ/ɺ), mountains→darker ➕
+  - background color #1a0000 (dark red) ➕
+  - removed when domain is pillaged ➕
+* domain can be pillaged when dragon dead or far away (>15 tiles) ➕
+* domains accumulate treasure (1/cycle base, 3/cycle for midas) ➕
+* type determines symbol/rotation: serpent, brute, blade, druid, midas ➕
+* domain determines color: aquatic (#004080), mountain (#808080), verdant (#008000), flame (#800000) ➕
+* Bresenham-style line movement with error accumulation ➕
+* age and die after 1000 cycles ➕
+* carnivores feed on cattle or fish ❌
 * herbivores occupy grassland to graze ❌
 * greed don't feed, but have increased want for treasure ❌
 * anthropophages seek out people to eat ❌
 * serpents dodge 25% of attacks ❌
-* sharp ignore the diagonal movement penalty ➕
+* blade (sharp) ignores diagonal movement penalty (forego_debt=True) ➕
 * brutes deal increased damage to settlements and caravans ❌
 * druids are more effective at tending to spirits ❌
-* midas collect much more treasure passively ❌
+* midas collect much more treasure passively (3x) ➕
 * have a rotation of wants ❌
 * want - tend to local spirits (more often when old) ❌
 * want - tend to treasury (more often when old) ❌
@@ -85,5 +100,4 @@
 * want - pillage villages and camps (if evil) ❌
 * protect nearby settlements from attackers (if good) ❌
 * attack all foreign entities (if territorial) ❌
-* age and die ❌
-* after death domain turns into treasury ❌
+* after death domain becomes pillage-able treasury ➕
