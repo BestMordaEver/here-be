@@ -12,8 +12,6 @@ if TYPE_CHECKING:
 WATER_SPIRIT_THRESHOLD = 5  # Minimum tiles for water spirit
 MOUNTAIN_SPIRIT_THRESHOLD = 5  # Minimum tiles for mountain spirit
 FOREST_SPIRIT_THRESHOLD = 10  # Minimum tiles for forest spirit
-FOREST_SPIRIT_LIFE_MULTIPLIER = 5  # Life per tile for forest spirits
-OTHER_SPIRIT_LIFE_MULTIPLIER = 10  # Life per tile for other spirits
 FOREST_MAX_DISTANCE = 25  # Max distance before forest node splits
 KMEANS_ITERATIONS = 10  # K-means clustering iterations
 
@@ -23,11 +21,8 @@ CITY_MIN_SETTLEMENT_DISTANCE = 30  # Min distance between settlements for city
 CITY_SPAWN_ATTEMPTS = 50  # Attempts to find valid city location
 CATTLE_SPAWN_ATTEMPTS = 10  # Attempts to find valid cattle location
 
-# City starting resources
-CITY_STARTING_FOOD = 150
-CITY_STARTING_WOOD = 50
-CITY_STARTING_ORES = 30
-CITY_STARTING_TREASURE = 200  # Enough to spawn spire immediately
+# City starting blessings
+CITY_STARTING_BLESSINGS = 10  # Enough to spawn spire immediately
 
 
 def find_resource_nodes(world: 'World') -> dict[str, List[List[Tuple[int, int]]]]:
@@ -245,13 +240,10 @@ def generate_spirits(world: 'World') -> None:
 							min_total_distance = total_distance
 							spawn_coord = candidate
 					
-					life = len(sub_node) * FOREST_SPIRIT_LIFE_MULTIPLIER if biome == 'forest' else len(sub_node) * OTHER_SPIRIT_LIFE_MULTIPLIER
-
-					# Create the spirit with life equal to node size
+					# Create the spirit with its domain tiles
 					spirit = Spirit(
 						type=biome,
 						coordinates=spawn_coord,
-						life=life,
 						domain_tiles=sub_node
 					)
 					
@@ -341,7 +333,6 @@ def attempt_spawn_village(world: 'World') -> bool:
 
 
 # Cattle spawning constants
-CATTLE_SPAWN_INTERVAL = 50  # Spawn cattle every N cycles
 CATTLE_MAX_COUNT = 20  # Maximum cattle in the world
 CATTLE_COLORS = ["#8B4513", "#A0522D", "#D2691E", "#CD853F"]  # Brown shades
 
@@ -422,15 +413,10 @@ def attempt_spawn_city(world: 'World') -> bool:
 		if not check_city_spawn_area(world, x, y):
 			continue
 		
-		# Spawn successful - create city with starting resources
+		# Spawn successful - create city with starting blessings
 		name = generate_village_name()  # Use same name generator
-		city = City(name, (x, y))
-		
-		# Initialize with resources for immediate expansion and spire
-		city.resources['food'] = CITY_STARTING_FOOD
-		city.resources['wood'] = CITY_STARTING_WOOD
-		city.resources['ores'] = CITY_STARTING_ORES
-		city.resources['treasure'] = CITY_STARTING_TREASURE
+		city = City(name, (x, y))		
+		city.blessings = CITY_STARTING_BLESSINGS
 		
 		world.add_entity(city)
 		return True

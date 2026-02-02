@@ -58,9 +58,13 @@ def get_world():
         
         serialized_entities.append(data)
     
+    # Get current game time
+    game_time = world.time.get_current_time()
+    
     return jsonify({
         "entities": serialized_entities,
-        "update_count": world.update_count,
+        "game_day": game_time.day,
+        "game_hour": game_time.hour,
+        "time_of_day": game_time.time_of_day.value,
         "timestamp": time.time(),
-        "next_update_in": world.get_next_update_time(),
     })

@@ -1,5 +1,5 @@
 """Mixin for settlement expansion logic."""
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, List, Any, TYPE_CHECKING
 from .named import Named
 
 if TYPE_CHECKING:
@@ -10,25 +10,131 @@ if TYPE_CHECKING:
 # Expansion constants
 WOOD_CAMP_RANGE = 6  # Max distance from forest spirit for camp
 ORE_CAMP_RANGE = 10  # Max distance from mountain spirit for camp
-EXCESS_THRESHOLD = 0.5  # Resource excess threshold (50% capacity)
-CARAVAN_COOLDOWN = 8  # Cycles between sending caravans
 CAMP_SEARCH_RADIUS = 15  # Radius around spirit to search for camp locations
 MIN_CAMP_SETTLEMENT_DISTANCE = 10  # Minimum distance from settlements for camp
-SETTLER_FOOD_COST = 40  # Food cost for sending settler caravan
-CAMP_FOOD_THRESHOLD = 0.5  # Camp food threshold (50% capacity)
-RESOURCE_PICKUP_THRESHOLD = 10  # Minimum resources to trigger pickup
 
 
 class ExpansionMixin(Named):
     """Mixin providing settlement expansion capabilities."""
     
-    def has_excess(self, resource) -> bool:
-        """Check if settlement has excess of the resource (more than 50% capacity)."""
-        return self.resources[resource] > self.storage_capacity * EXCESS_THRESHOLD
+    # Subclasses should initialize these
+    subsidiary_camps: List[Any]
+    _days_since_settler: int
     
-    def expand_settlement(self, world: 'World') -> None:
-        """Expand the settlement by creating new camps or villages."""
-        raise NotImplementedError("Subclasses must implement expand_settlement()")
+    def try_expand(self, world: 'World') -> None:
+        """Try to send settler caravan (every 2 days if under camp limit)."""
+        # Only villages and cities expand
+        if self.__class__.__name__ not in ('Village', 'City'):
+            return
+        
+        # Check expansion timing (every 2 days)
+        if not hasattr(self, '_days_since_settler'):
+            self._days_since_settler = 0
+        
+        self._days_since_settler += 1
+        if self._days_since_settler < 2:
+            return
+        
+        self._days_since_settler = 0
+        
+        # Check camp limit
+        if not hasattr(self, 'subsidiary_camps'):
+            self.subsidiary_camps = []
+        
+        # Count actual camps (not caravans)
+        camp_count = sum(1 for c in self.subsidiary_camps 
+                         if c.__class__.__name__ == 'Camp')
+        
+        max_camps = self.get_max_camps()
+        if camp_count >= max_camps:
+            return
+        
+        # Find spirit to exploit
+        spirit = self._find_expansion_spirit(world)
+        if spirit:
+            location = self.find_valid_camp_location(spirit, world)
+            if location:
+                spirit.is_occupied = True  # Mark spirit as claimed
+                self._send_settler_caravan(world, location, target_spirit=spirit)
+    
+    def _find_expansion_spirit(self, world: 'World') -> Optional[Any]:
+        """Find best spirit to expand to, prioritizing resource requirements."""
+        if not hasattr(self, 'subsidiary_camps'):
+            return None
+        
+        # Count current camp types
+        forest_camps = 0
+        mountain_camps = 0
+        for camp in self.subsidiary_camps:
+            if camp.__class__.__name__ == 'Camp':
+                spirit = getattr(camp, 'target_spirit', None)
+                if spirit:
+                    if spirit.type == 'forest':
+                        forest_camps += 1
+                    elif spirit.type == 'mountain':
+                        mountain_camps += 1
+        
+        # Get requirements from subclass
+        prioritized = self.get_prioritized_resource()
+        required_count = self.get_prioritized_resource_count()
+        
+        # Build priority order based on requirements
+        priority_types = []
+        
+        # Check if we still need the prioritized resource
+        if prioritized == 'forest' and forest_camps < required_count:
+            priority_types.append('forest')
+        elif prioritized == 'mountain' and mountain_camps < required_count:
+            priority_types.append('mountain')
+        
+        # Check if we need the secondary resource (half the prioritized requirement)
+        secondary_required = max(1, required_count // 2)
+        if prioritized == 'forest' and mountain_camps < secondary_required:
+            priority_types.append('mountain')
+        elif prioritized == 'mountain' and forest_camps < secondary_required:
+            priority_types.append('forest')
+        
+        # If requirements met, allow any type
+        if not priority_types:
+            priority_types = ['forest', 'mountain']
+        
+        # Find closest unoccupied spirit of priority type
+        best_spirit = None
+        best_distance = float('inf')
+        
+        for entity in world.entities:
+            if entity.__class__.__name__ != 'Spirit' or not entity.is_alive:
+                continue
+            if entity.type not in priority_types:
+                continue
+            if getattr(entity, 'is_occupied', False):
+                continue
+            
+            distance = self.get_distance(entity.coordinates)
+            if distance < best_distance:
+                best_distance = distance
+                best_spirit = entity
+        
+        return best_spirit
+    
+    def _send_settler_caravan(self, world: 'World', destination, target_spirit=None, is_village: bool = False) -> None:
+        """Send a settler caravan to establish camp or village."""
+        from game.entities.caravan import Caravan, CaravanMission
+        
+        mission = CaravanMission.SETTLE_VILLAGE if is_village else CaravanMission.SETTLE_CAMP
+        
+        caravan = Caravan(
+            coordinates=(self.coordinates[0], self.coordinates[1] + 2),
+            home=self,
+            destination=destination,
+            mission=mission,
+            target_spirit=target_spirit
+        )
+        
+        if hasattr(self, 'subsidiary_camps'):
+            self.subsidiary_camps.append(caravan)
+        
+        world.add_entity(caravan)
     
     def find_valid_camp_location(self, spirit, world: 'World') -> Optional['Coordinates']:
         """Find the closest valid location for a worker camp near a spirit.
@@ -93,7 +199,6 @@ class ExpansionMixin(Named):
         
         return None
 
-
     def get_max_camps(self) -> int:
         """Override in subclass to set camp limit."""
         raise NotImplementedError
@@ -105,126 +210,3 @@ class ExpansionMixin(Named):
     def get_prioritized_resource_count(self) -> int:
         """Override in subclass to set how many camps of the prioritized type are needed."""
         raise NotImplementedError
-
-
-    def expand_settlement(self, world: 'World') -> None:
-        """Attempt to send a caravan to create a worker camp near a spirit."""
-        if not self.has_excess('food'):
-            return
-        
-        # Check caravan cooldown
-        if world.update_count - self.last_caravan_cycle < CARAVAN_COOLDOWN:
-            return
-        
-        # Check if we've reached the camp limit (3 max)
-        if len(self.subsidiary_camps) >= self.get_max_camps():
-            return
-        
-        required_type = self.get_prioritized_resource()
-        required_count = self.get_prioritized_resource_count()
-        
-        # Count how many camps have prioritized resource access
-        camps = 0
-        for sub in self.subsidiary_camps:
-            if sub.__class__.__name__ == 'Caravan':
-                if self.get_prioritized_resource() in sub.intent:
-                    camps += 1
-            elif sub.has_ore_access() if required_type == 'mountain' else sub.has_wood_access():
-                camps += 1
-        
-        # Find nearby spirits, sorted by distance
-        spirits_with_distance = []
-        for entity in world.entities:
-            if entity.__class__.__name__ == 'Spirit' and not entity.is_occupied:
-                spirits_with_distance.append((self.get_distance(entity.coordinates), entity))
-        
-        if not spirits_with_distance:
-            return
-        
-        # Sort by distance (closest first)
-        spirits_with_distance.sort(key=lambda item: item[0])
-        
-        for distance, spirit in spirits_with_distance:
-            # Prioritize forest spirits if we need wood access
-            if camps < required_count and spirit.type != required_type:
-                continue
-            
-            # Find valid camp location near this spirit
-            camp_location = self.find_valid_camp_location(spirit, world)
-            
-            if camp_location is None:
-                continue
-            
-            # Check distance constraints based on spirit type
-            distance_to_spirit = spirit.get_distance(camp_location)
-            
-            if spirit.type == 'forest' and distance_to_spirit > 6:
-                continue  # Too far from forest spirit
-            elif spirit.type == 'mountain' and distance_to_spirit > 10:
-                continue  # Too far from mountain spirit
-            
-            # Valid location found! Create caravan
-            spirit.is_occupied = True  # Mark spirit as occupied
-            
-            # Create the caravan with intent to establish camp
-            caravan = self.send_caravan(
-                world=world,
-                destination=camp_location,
-                intent="settle " + ("wood" if spirit.type == 'forest' else "ore") + f" {spirit.coordinates}",
-                food_cost=SETTLER_FOOD_COST
-            )
-            
-            # Track the subsidiary camp
-            self.subsidiary_camps.append(caravan)
-            
-            # Update last caravan cycle
-            self.last_caravan_cycle = world.update_count
-            
-            return  # Only send one caravan at a time
-    
-    def send_trade_caravans(self, world: 'World') -> None:
-        """Send trade caravans to existing camps to exchange resources."""
-        if not self.has_excess('food'):
-            return
-        
-        # Check caravan cooldown
-        if world.update_count - self.last_caravan_cycle < CARAVAN_COOLDOWN:
-            return
-        
-        # Find camps that need food or have resources to pick up
-        for sub in self.subsidiary_camps:
-            if sub.__class__.__name__ != 'Camp':
-                continue  # Skip caravans still en route
-            
-            camp = sub
-            if not camp.is_alive:
-                continue
-            
-            # Check if camp needs food (less than threshold capacity)
-            needs_food = camp.resources.get('food', 0) < camp.storage_capacity * CAMP_FOOD_THRESHOLD
-            # Check if camp has resources to pick up
-            has_resources = camp.resources.get('wood', 0) > RESOURCE_PICKUP_THRESHOLD or camp.resources.get('ores', 0) > RESOURCE_PICKUP_THRESHOLD
-            
-            if needs_food or has_resources:
-                from game.entities.caravan import TRADE_CARGO_CAPACITY
-                
-                # Load food cargo if we have excess
-                cargo = {}
-                if needs_food:
-                    food_to_send = min(TRADE_CARGO_CAPACITY, self.resources.get('food', 0) // 2)
-                    if food_to_send > 0:
-                        cargo['food'] = food_to_send
-                
-                # Send caravan (food will be deducted from cargo preparation above)
-                caravan = self.send_caravan(
-                    world=world,
-                    destination=camp,
-                    intent="trade",
-                    cargo=cargo,
-                    food_cost=cargo.get('food', 0)  # Deduct the food we're sending
-                )
-                
-                world.add_entity(caravan)
-                
-                self.last_caravan_cycle = world.update_count
-                return  # Only send one caravan at a time

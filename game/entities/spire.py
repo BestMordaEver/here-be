@@ -1,5 +1,5 @@
 """Spire - a tower that enables dragon summoning."""
-from .base import Coordinates, Entity
+from .base import Coordinates, Entity, Aging, Ruins
 from typing import TYPE_CHECKING, Dict, Any
 
 if TYPE_CHECKING:
@@ -8,18 +8,33 @@ if TYPE_CHECKING:
 
 
 # Spire constants
-ORE_CONSUMPTION = 1
-TREASURE_CONSUMPTION = 1
-CONSUMPTION_INTERVAL = 10  # Consume resources every N cycles
+BLESSING_CONSUMPTION = 1  # Blessings consumed per day to maintain spire
 
 
-class Spire(Entity):
-    """A golden tower near a city that enables dragon summoning."""
+class Spire(Entity, Aging, Ruins):
+    """A golden tower near a city that enables dragon summoning. Has HP for disrepair."""
+    
+    LIFESPAN_DAYS = 100  # Spire naturally crumbles after this many days
+    RUINS_DURATION_DAYS = 50  # Ruins disappear after this many days
     
     def __init__(self, coordinates: Coordinates, city: 'City'):
-        super().__init__("#DAA520", "Ї", coordinates, life=200)  # Goldenrod color
-        self.city = city  # Parent city (shares resources)
-        self.last_consumption_cycle = 0
+        super().__init__("#DAA520", "Ї", coordinates)  # Goldenrod color
+        self.init_aging()
+        self.init_ruins()
+        self.city = city  # Parent city (shares blessings)
+        self.max_life = 200
+        self.life = 200
+        self._last_consumption_day = -1
+    
+    def hurt(self, world: 'World', damage: int, source: str) -> None:
+        """Inflict damage to the spire."""
+        self.life -= damage
+        if self.life <= 0:
+            self.die(world, source)
+    
+    def heal(self, amount: int) -> None:
+        """Heal the spire, not exceeding max life."""
+        self.life = min(self.max_life, self.life + amount)
     
     def get_tiles(self):
         """Return single tile for the spire."""
@@ -31,42 +46,46 @@ class Spire(Entity):
         """Check if spire occupies the given coordinates."""
         return self.coordinates == coordinates
     
-    def consume_resources(self, world: 'World') -> None:
-        """Consume ores and treasure from parent city."""
+    def consume_blessings(self, world: 'World') -> None:
+        """Consume blessings from parent city once per day to maintain spire."""
         if self.is_dead or not self.city.is_alive:
             return
         
-        # Only consume periodically
-        if world.update_count - self.last_consumption_cycle < CONSUMPTION_INTERVAL:
+        # Only consume once per day
+        current_day = world.day_night_cycle.get_current_time().day
+        if current_day == self._last_consumption_day:
             return
         
-        self.last_consumption_cycle = world.update_count
+        self._last_consumption_day = current_day
         
-        # Try to consume from city's resources
-        ores_consumed = self.city.remove_resource('ores', ORE_CONSUMPTION)
-        treasure_consumed = self.city.remove_resource('treasure', TREASURE_CONSUMPTION)
-        
-        # Take disrepair damage if resources insufficient
-        missing = (ORE_CONSUMPTION - ores_consumed) + (TREASURE_CONSUMPTION - treasure_consumed)
-        if missing > 0:
-            self.hurt(world, missing, 'disrepair')
+        # Try to consume blessings from city
+        if self.city.blessings >= BLESSING_CONSUMPTION:
+            self.city.blessings -= BLESSING_CONSUMPTION
+            self.heal(1)  # Recover if blessings met
         else:
-            self.heal(1)  # Recover if resources met
+            self.hurt(world, 1, 'disrepair')
     
-    def update(self, world: 'World') -> None:
-        """Update spire state."""
-        if self.is_dead:
-            return  # Ruined spires don't update but remain on map
+    def on_dawn(self, world: 'World') -> None:
+        """Handle dawn - age the spire and check for natural death or ruin cleanup."""
+        if self.process_ruins(world):
+            return
+        
+        if self.process_aging(world):
+            return
         
         # If parent city dies, spire starts to decay faster
         if not self.city.is_alive:
             self.hurt(world, 2, 'abandoned')
         
-        self.consume_resources(world)
+        self.consume_blessings(world)
+    
+    def update(self, world: 'World') -> None:
+        """Update spire state - most logic moved to on_dawn."""
+        pass
     
     def serialize(self) -> Dict[str, Any]:
         """Serialize spire to dictionary for JSON output."""
         data = super().serialize()
         data["city"] = self.city.name if self.city else "none"
-        data["debug_info"] = f"Spire at {self.coordinates} for {self.city.name if self.city else 'none'}"
+        data["debug_info"] = f"Spire at {self.coordinates} for {self.city.name if self.city else 'none'} life={self.life}"
         return data

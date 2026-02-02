@@ -6,19 +6,17 @@ Coordinates = Tuple[int, int]
 
 
 class Entity:
+    """Base class for all game entities. Does not include health/life by default."""
 
     def __init__(
         self,
         color: str,
         character: str,
         coordinates: Coordinates,
-        life: int,
     ):
         self.color = color
         self.character = character
         self.coordinates = coordinates
-        self.max_life = life
-        self.life = life
         self.is_alive = True
         self.is_dead = False
     
@@ -53,16 +51,6 @@ class Entity:
                 if dx != 0 or dy != 0:
                     surrounding.append((x + dx, y + dy))
         return surrounding
-    
-    def hurt(self, world, damage: int, source: str) -> None:
-        """Inflict damage to the entity."""
-        self.life -= damage
-        if self.life <= 0:
-            self.die(world, source)
-    
-    def heal(self, amount: int) -> None:
-        """Heal the entity, not exceeding max life."""
-        self.life = min(self.max_life, self.life + amount)
 
     def die(self, world, reason) -> None:
         """Handle entity death."""
@@ -78,4 +66,4 @@ class Entity:
         }
     
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(life={self.life})"
+        return f"{self.__class__.__name__}(pos={self.coordinates})"

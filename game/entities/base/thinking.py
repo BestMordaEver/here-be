@@ -4,8 +4,8 @@ import random
 
 # Thinking constants
 MAX_THOUGHTS = 20  # Maximum thoughts kept in history
-THOUGHT_INTERVAL_MIN = 10  # Minimum cycles between thoughts
-THOUGHT_INTERVAL_MAX = 30  # Maximum cycles between thoughts
+THOUGHT_INTERVAL_HOURS_MIN = 2  # Minimum game hours between thoughts
+THOUGHT_INTERVAL_HOURS_MAX = 6  # Maximum game hours between thoughts
 
 # Thought templates for different intents/states
 IDLE_THOUGHTS = [
@@ -60,7 +60,8 @@ class Thinking:
     def __init__(self, intent: str = "idle"):
         self.thoughts: List[str] = []
         self.intent: str = intent
-        self._last_thought_cycle: int = -999
+        self._last_thought_hour: int = -999
+        self._next_thought_interval: int = random.randint(THOUGHT_INTERVAL_HOURS_MIN, THOUGHT_INTERVAL_HOURS_MAX)
 
     def think(self, thought: str) -> None:
         """Add a thought to the entity's thought history."""
@@ -71,11 +72,14 @@ class Thinking:
     
     def generate_thought(self, world) -> None:
         """Generate a thought based on current state and intent."""
-        # Only think occasionally
-        if hasattr(world, 'update_count'):
-            if world.update_count - self._last_thought_cycle < random.randint(THOUGHT_INTERVAL_MIN, THOUGHT_INTERVAL_MAX):
+        # Only think occasionally (based on game hours)
+        if hasattr(world, 'day_night_cycle'):
+            current_time = world.day_night_cycle.get_current_time()
+            total_hours = current_time.day * 24 + current_time.hour
+            if total_hours - self._last_thought_hour < self._next_thought_interval:
                 return
-            self._last_thought_cycle = world.update_count
+            self._last_thought_hour = total_hours
+            self._next_thought_interval = random.randint(THOUGHT_INTERVAL_HOURS_MIN, THOUGHT_INTERVAL_HOURS_MAX)
         
         thought = None
         

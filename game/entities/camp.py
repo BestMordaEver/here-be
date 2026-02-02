@@ -2,42 +2,31 @@
 from .base import Coordinates, Settlement, Mortal
 from typing import List, Tuple, TYPE_CHECKING
 
-
 if TYPE_CHECKING:
     from game.world import World
     from . import Spirit
 
 from .base.expansion import WOOD_CAMP_RANGE, ORE_CAMP_RANGE
-FOOD_CONSUMPTION = 2
-RECOVERY_RATE = 1
-WOOD_GATHER_RATE = 3
-ORE_GATHER_RATE = 3
-SPIRIT_HURT_RATE = 2
-
-# Camp init constants
-STARTING_LIFE = 200  # Camp starting HP
-STORAGE_CAPACITY = 100  # Camp storage capacity
-STARTING_FOOD = 40  # Initial food supply
-
-# Camp caravan constants
-CAMP_RETURN_CARAVAN_COOLDOWN = 15  # Cycles between sending return caravans
-CAMP_RESOURCE_SEND_THRESHOLD = 40  # Min resources to send back home
 
 
-class Camp(Mortal, Settlement):
-    """2x2 worker camp made of brown diamonds."""
+class Camp(Settlement, Mortal):
+    """2x2 worker camp made of brown tents."""
     
     def __init__(self, coordinates: Coordinates, spirit_coordinates: Coordinates, home: 'Settlement'):
-        super().__init__(coordinates, life=STARTING_LIFE)
-        self.storage_capacity = STORAGE_CAPACITY
-        self.resources['food'] = STARTING_FOOD  # Initial food supply
-        self.nearby_spirits : List['Spirit'] | None = None  # Cached list of nearby spirits (lazy init)
+        super().__init__(coordinates, life=2)
+        self.nearby_spirits: List['Spirit'] | None = None  # Cached list of nearby spirits (lazy init)
         self.spirit_coordinates = spirit_coordinates
         self.home = home
-        self.last_caravan_cycle = -999  # Last cycle a return caravan was sent
+        self._last_blessing_day = -1
     
     def die(self, world: 'World', cause: str) -> None:
-        """Handle camp depletion."""
+        """Handle camp death."""
+        # Drop blessings
+        if self.blessings > 0:
+            from .blessing import drop_blessing
+            drop_blessing(world, self.coordinates, self.blessings)
+            self.blessings = 0
+        
         super().die(world, cause)
         
         # Free up the occupied spirit
@@ -61,7 +50,7 @@ class Camp(Mortal, Settlement):
     def get_tiles(self) -> List[Tuple[Coordinates, str, str]]:
         """Return all 2x2 tiles for the worker camp."""
         if self.is_dead:
-            return []  # Worker camp disappears when depleted
+            return []  # Worker camp disappears when dead
         
         x, y = self.coordinates
         tiles = []
@@ -70,28 +59,20 @@ class Camp(Mortal, Settlement):
                 tiles.append(((x + dx, y + dy), "Λ", "#8B4513"))
         return tiles
     
-    def consume_resources(self, world: 'World') -> str:
-        """Worker camps consume 2 food per cycle."""
+    def on_dawn(self, world: 'World') -> None:
+        """Try to send blessings to parent, then extract from spirits."""
         if self.is_dead:
             return
         
-        food_consumed = self.remove_resource('food', FOOD_CONSUMPTION)
+        current_day = world.day_night_cycle.get_current_time().day
         
-        # If couldn't consume enough food, starve
-        if food_consumed < FOOD_CONSUMPTION:
-            self.hurt(world, FOOD_CONSUMPTION - food_consumed, 'starvation')
-        else:
-            self.heal(RECOVERY_RATE)  # Heal 1 life if food needs met
-    
-    def generate_resources(self, world : 'World') -> None:
-        """Gather resources from nearby forest and mountain spirits."""
-        if self.is_dead:
-            return
+        # Send blessing to parent settlement if we have one
+        if self.blessings > 0 and self.home and self.home.is_alive:
+            self._send_blessing_to_parent(world)
         
-        # Lazy initialization of nearby spirits cache
+        # Initialize nearby spirits cache if needed
         if self.nearby_spirits is None:
             self.nearby_spirits = []
-            
             for entity in world.entities:
                 if entity.__class__.__name__ == 'Spirit':
                     if entity.type == 'forest' and self.get_distance(entity.coordinates) <= WOOD_CAMP_RANGE:
@@ -99,54 +80,32 @@ class Camp(Mortal, Settlement):
                     elif entity.type == 'mountain' and self.get_distance(entity.coordinates) <= ORE_CAMP_RANGE:
                         self.nearby_spirits.append(entity)
         
-        # Gather from cached spirits
+        # Try to extract blessing once per day
+        if current_day == self._last_blessing_day:
+            return
+        
         for spirit in self.nearby_spirits:
-            if spirit.is_alive:  # Only gather from living spirits
-                # Gather resources from this spirit
-                if spirit.type == 'forest':
-                    self.add_resource('wood', WOOD_GATHER_RATE)
-                elif spirit.type == 'mountain':
-                    self.add_resource('ores', ORE_GATHER_RATE)
-                
-                # Hurt the spirit
-                spirit.hurt(world, SPIRIT_HURT_RATE, 'exploitation')
-        
-        # Send return caravans with gathered resources
-        self.send_return_caravan(world)
+            if spirit.is_alive and spirit.has_blessing:
+                spirit.take_blessing()
+                self.blessings += 1
+                self._last_blessing_day = current_day
+                return  # Only one blessing per day
     
-    def send_return_caravan(self, world: 'World') -> None:
-        """Send caravan back to home with gathered resources (wood/ores)."""
-        if self.is_dead:
-            return
+    def _send_blessing_to_parent(self, world: 'World') -> None:
+        """Send a caravan with blessing to parent settlement."""
+        from .caravan import Caravan, CaravanMission
         
-        # Check if we have a home to send resources to
-        if not hasattr(self, 'home') or not self.home or not self.home.is_alive:
-            return
-        
-        # Check caravan cooldown
-        if world.update_count - self.last_caravan_cycle < CAMP_RETURN_CARAVAN_COOLDOWN:
-            return
-        
-        # Check if we have resources to send
-        wood = self.resources.get('wood', 0)
-        ores = self.resources.get('ores', 0)
-        
-        if wood < CAMP_RESOURCE_SEND_THRESHOLD and ores < CAMP_RESOURCE_SEND_THRESHOLD:
-            return  # Not enough resources to send
-        
-        # Prepare cargo
-        cargo = {}
-        if wood >= CAMP_RESOURCE_SEND_THRESHOLD:
-            # Send half of wood
-            wood_to_send = wood // 2
-            self.remove_resource('wood', wood_to_send)
-            cargo['wood'] = wood_to_send
-        
-        if ores >= CAMP_RESOURCE_SEND_THRESHOLD:
-            # Send half of ores
-            ores_to_send = ores // 2
-            self.remove_resource('ores', ores_to_send)
-            cargo['ores'] = ores_to_send
-        
-        if cargo:  # Only send if we have cargo
-            self.send_caravan(world, self.home, "trade", cargo=cargo, food_cost=0)
+        # Create caravan to deliver blessing
+        caravan = Caravan(
+            coordinates=self.coordinates,
+            home=self.home,
+            destination=self.home,
+            mission=CaravanMission.DELIVER_BLESSING
+        )
+        caravan.blessing = True
+        self.blessings -= 1
+        world.add_entity(caravan)
+    
+    def update(self, world: 'World') -> None:
+        """Camps don't need regular updates beyond dawn."""
+        pass

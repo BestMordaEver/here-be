@@ -1,39 +1,71 @@
 """Mobile entity base class - entities that can move and have states."""
-from typing import Optional
+from typing import Optional, List, TYPE_CHECKING
 from .entity import Entity, Coordinates
 import heapq
 
+if TYPE_CHECKING:
+    from game.world import World
+
 sqrt2 = 2 ** 0.5
 
+# Encounter detection radius
+ENCOUNTER_RADIUS = 3.0
+
+
 class Mobile(Entity):
+    """Base class for entities that can move around the world."""
 
     def __init__(
         self,
         color: str,
         character: str,
         coordinates: Coordinates,
-        life: int,
-        destination=None
+        destination=None,
+        loiter: int = 0  # Update cycles to skip between moves (0 = fastest)
     ):
-        super().__init__(color, character, coordinates, life)
+        super().__init__(color, character, coordinates)
         self.state = "created"
         self.destination: Optional[Coordinates] = destination
-        self.loiter = 0
-        self.loiter_counter = 0
+        self.target_entity = None  # The entity we're moving toward (if any)
+        self.path: List[Coordinates] = []  # Current path to follow
         self.movement_debt = 0.0  # Accumulated cost from diagonal movement
+        self.loiter = loiter  # Cycles to wait between moves
+        self.loiter_counter = 0  # Current loiter countdown
     
-    def choose_target(self, world) -> None:
-        """Choose a destination based on entity-specific logic. Override in subclasses."""
-        raise NotImplementedError("Subclasses must implement choose_target()")
+    def set_destination(self, destination: Coordinates, world: 'World') -> bool:
+        """
+        Set a new destination and calculate path.
+        
+        Returns:
+            True if a path was found, False otherwise
+        """
+        self.destination = destination
+        self.target_entity = None
+        self.path = self.find_path(destination, world)
+        if self.path:
+            self.state = "moving"
+            return True
+        return False
     
-    def approach_target(self, world) -> None:
-        """Move towards destination. Override in subclasses for specific movement patterns."""
-        raise NotImplementedError("Subclasses must implement approach_target()")
+    def set_target_entity(self, target, world: 'World') -> bool:
+        """
+        Set an entity as the target and calculate path to it.
+        
+        Returns:
+            True if a path was found, False otherwise
+        """
+        self.target_entity = target
+        self.destination = target.coordinates
+        self.path = self.find_path(target.coordinates, world)
+        if self.path:
+            self.state = "moving"
+            return True
+        return False
     
     def move_to(self, new_coordinates: Coordinates, forego_debt: bool = False) -> None:
         """Move to a new coordinate, applying movement debt if diagonal."""
 
-        if not forego_debt: # Blades ignore movement debt
+        if not forego_debt:  # Blades ignore movement debt
             dx = abs(new_coordinates[0] - self.coordinates[0])
             dy = abs(new_coordinates[1] - self.coordinates[1])
         
@@ -41,18 +73,21 @@ class Mobile(Entity):
             
             if is_diagonal:
                 self.movement_debt += (sqrt2 - 1.0)
-            
-            if self.movement_debt >= 1.0:   # At least one, so dragons aren't exempt
-                self.loiter_counter -= self.loiter or 1
-                self.movement_debt -= 1.0
         
         self.coordinates = new_coordinates
     
-    def is_passable(self, coordinates: Coordinates, world) -> bool:
+    def should_skip_movement(self) -> bool:
+        """Check if this movement update should be skipped due to diagonal debt."""
+        if self.movement_debt >= 1.0:
+            self.movement_debt -= 1.0
+            return True
+        return False
+    
+    def is_passable(self, coordinates: Coordinates, world: 'World') -> bool:
         """Check if a tile is passable. Override in subclasses for terrain restrictions."""
         return True
     
-    def find_path(self, destination: Coordinates, world, max_search: int = 5000) -> list[Coordinates]:
+    def find_path(self, destination: Coordinates, world: 'World', max_search: int = 5000) -> List[Coordinates]:
         """Find a path from current position to destination using A* pathfinding."""
 
         if not self.is_passable(destination, world):
@@ -117,16 +152,112 @@ class Mobile(Entity):
         
         return []
     
-    def update(self, world) -> None:
-        if self.state == "moving":
-            if self.loiter_counter < self.loiter:
-                self.loiter_counter += 1
-            else:
-                self.loiter_counter = 0
-                self.approach_target(world)
+    def update_movement(self, world: 'World') -> None:
+        """
+        Called every 10 seconds to process movement.
+        Moves one step along the current path, respecting loiter delays.
+        """
+        if self.state != "moving" or not self.path:
+            return
+        
+        # Check loiter (slower entities wait between moves)
+        if self.loiter_counter > 0:
+            self.loiter_counter -= 1
+            return
+        
+        # Check diagonal debt
+        if self.should_skip_movement():
+            self.loiter_counter = self.loiter
+            return
+        
+        # If tracking an entity, update destination if it moved
+        if self.target_entity and hasattr(self.target_entity, 'coordinates'):
+            if self.target_entity.coordinates != self.destination:
+                self.destination = self.target_entity.coordinates
+                # Recalculate path if target moved significantly
+                if self.get_distance(self.destination) > 2:
+                    self.path = self.find_path(self.destination, world)
+        
+        # Move along path
+        if self.path:
+            next_step = self.path.pop(0)
+            self.move_to(next_step)
             
+            # Reset loiter counter after moving
+            self.loiter_counter = self.loiter
+            
+            # Check if arrived
             if self.coordinates == self.destination:
                 self.state = "arrived"
+                self.on_arrival(world)
+            elif not self.path:
+                # Path exhausted but not at destination - recalculate
+                self.path = self.find_path(self.destination, world)
+                if not self.path:
+                    self.state = "stuck"
+    
+    def on_arrival(self, world: 'World') -> None:
+        """Called when entity arrives at destination. Override in subclasses."""
+        pass
+    
+    def check_for_encounters(self, world: 'World') -> Optional['Mobile']:
+        """
+        Check for nearby entities that should trigger an encounter.
+        Override in subclasses for entity-specific encounter detection.
+        
+        Returns:
+            An encountered entity, or None
+        """
+        # Default: no encounters
+        return None
+    
+    def get_nearby_entities(self, world: 'World', radius: float = ENCOUNTER_RADIUS) -> List['Mobile']:
+        """Get all mobile entities within encounter radius."""
+        nearby = []
+        for entity in world.entities:
+            if entity is self:
+                continue
+            if not isinstance(entity, Mobile):
+                continue
+            if not entity.is_alive:
+                continue
+            if self.get_distance(entity.coordinates) <= radius:
+                nearby.append(entity)
+        return nearby
+    
+    def flee_from(self, threat, world: 'World') -> bool:
+        """
+        Start fleeing from a threat.
+        
+        Returns:
+            True if a flee path was found
+        """
+        # Calculate direction away from threat
+        tx, ty = threat.coordinates
+        mx, my = self.coordinates
+        
+        # Move in opposite direction
+        dx = mx - tx
+        dy = my - ty
+        
+        # Normalize and extend
+        dist = max(1, (dx**2 + dy**2)**0.5)
+        flee_distance = 20  # Flee this far
+        target_x = int(mx + (dx / dist) * flee_distance)
+        target_y = int(my + (dy / dist) * flee_distance)
+        
+        # Clamp to world bounds
+        target_x = max(0, min(world.WIDTH - 1, target_x))
+        target_y = max(0, min(world.HEIGHT - 1, target_y))
+        
+        return self.set_destination((target_x, target_y), world)
+    
+    def stop_movement(self) -> None:
+        """Stop current movement."""
+        self.state = "idle"
+        self.path = []
+        self.destination = None
+        self.target_entity = None
     
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(state={self.state}, pos={self.coordinates})"

@@ -7,46 +7,52 @@ if TYPE_CHECKING:
     from .dragon import Dragon
 
 
-# Shared recovery rates for all spirits
-NATURAL_RECOVERY_RATE = 1
-TENDED_RECOVERY_RATE = 3
-
-
 class Spirit(Entity):
+    """Spirits are stationary entities representing natural domains. 
+    Domain size is fixed by tileset. Tending by dragons creates blessings."""
 
     def __init__(
         self,
         type: str,
         coordinates: Coordinates,
-        life: int,
         domain_tiles: List[Tuple[int, int]] = None,
     ):
-        super().__init__("", "", coordinates, life)
+        super().__init__("", "", coordinates)
         self.type = type    # forest, water, mountain
-        self.max_life = life
         self.domain_tiles = domain_tiles if domain_tiles is not None else []
-        self.is_occupied = False
+        self.is_occupied = False  # Whether a camp is on this spirit
+        self.has_blessing = False  # Spirits can store only one blessing
     
-    def natural_recovery(self) -> None:
-        """Recover life naturally over time."""
-        self.heal(NATURAL_RECOVERY_RATE)
+    def get_tended(self) -> bool:
+        """When tended by a dragon, create a blessing if none exists.
+        Returns True if a blessing was created."""
+        if not self.has_blessing:
+            self.has_blessing = True
+            return True
+        return False
     
-    def get_tended(self) -> None:
-        """Recover life when tended by a dragon."""
-        self.heal(TENDED_RECOVERY_RATE)
+    def take_blessing(self) -> bool:
+        """Take the blessing from this spirit.
+        Returns True if a blessing was taken."""
+        if self.has_blessing:
+            self.has_blessing = False
+            return True
+        return False
     
     def update(self, world) -> None:
         """Update spirit state during timestep."""
-        self.natural_recovery()
+        pass  # Spirits are passive
     
     def serialize(self):
         """Serialize spirit to dictionary for JSON output."""
         base = super().serialize()
         base.update({
+            "type": self.type,
             "domain_tiles": self.domain_tiles,
+            "has_blessing": self.has_blessing,
             "debug_info": f"{self}"
         })
         return base
     
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(life={self.life}/{self.max_life})"
+        return f"Spirit({self.type}, tiles={len(self.domain_tiles)}, blessing={self.has_blessing})"

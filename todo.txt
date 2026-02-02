@@ -1,103 +1,219 @@
 ❌ not done, ➕ done, 〰 partially done
 
+# User interaction 〰
+- users can submit a form that defines some characteristics of a dragon 〰
+- users can submit the form up to as many times per day as there are active spires ❌
+- if no active spires - the world carries on, but no user interaction is possible ❌
+- if 5 spires are active for 5 consecutive days - the world stabilizes enough to always allow at least one dragon be spawned ❌
+- dragons have type - serpent, blade, brute, midas, druid, fragile 〰
+- dragons have diet - herbivore, carnivore, anthropophage, greed ➕
+- dragons spawn at a chosen location that determines their color - green for plains, blue for water, grey for mountains, red for scorched ➕
+- dragons have character - neutral, good, evil and territorial. If omitted - select at random favoring neutral 〰
+- dragons have pronouns, if omitted - it/it/its ➕
+
 # Map ➕
 - generate terrain (perlin noise heightmap) ➕
-- generate villages (spawn 5 on init, then 5 more every 200 cycles at random plains locations) ➕
-- generate initial city (11x11 plains check, starts with 150 food, 50 wood, 30 ores, 10 treasure) ➕
+- generate villages (spawn 5 on init, then 2 more every 10 days at random plains locations) 〰
+- generate initial city (11x11 plains check, starts with a prebuilt spire, then 1 more every 15 days) 〰
 - generate spirits (on init; water/mountain >=5 tiles, forest >=10 tiles; forests split by k-means if >25 tiles apart) ➕
 - pretty 〰
-- accessibility ❌
+- accessibility 〰
+
+# Update loop 〰
+- there is a daily update that determines settlement events and entity moods ➕
+- after all moods are set, entities create a schedule for the day, evenly spreading the planned actions ➕
+- there is an update every 10 seconds which processes the reactions and motions of the schedule (dragon circles the target, bandit stops the caravan etc) 〰
 
 # Mobile entities ➕
 - movement logic (state machine: created→moving→arrived) ➕
 - diagonal movement penalty (sqrt(2)-1 debt accumulation, skip turn when >=1) ➕
 - pathfinding (A* with Euclidean heuristic, diagonal cost sqrt(2)) ➕
 
-# Thinking entities ➕
+# Thinking entities 〰
 - intent property ➕
 - thoughts list (append via think(), max 20 kept) ➕
 - action/intent/idle thought generation (random every 10-30 cycles based on state/intent) ➕
+* gossip and news ❌
+  - caravans share news of dragons and bandits
+  - heroes share news of dragon lairs and grudges
+  - settlements exchange gossip of upcoming events and stored blessings
 
 # Entity types 〰
 - spirits and cattle ➕
-* spirits spawn during generation at most central tile, life = tiles * 5 (forest) or * 10 (water/mountain) ➕
-* spirits recover naturally (+1/cycle) or when tended (+3) ➕
+* spirits spawn during generation at the most central tiles of forests, mountains and lakes ➕
+* spirits tended by a dragon receive a blessing ❌
 * cattle spawn every 50 cycles, max 20 in world, random plains location ➕
 * cattle wander randomly, gravitate toward villages within 10 tiles ➕
+* cattle fear dragons and scorched land 〰
 
 - settlements 〰
-* villages send worker caravans when excess food (>50% capacity) ➕
-* cities send caravans for worker camps (up to 4) and villages (up to 2) ➕
-* trade caravans carry cargo (30 capacity), deliver food to camps, pick up wood/ores ➕
-* camps consume 2 food/cycle, starve if insufficient ➕
-* cities consume 3 food/cycle, starve if insufficient ➕
-* villages do not consume food ➕
-* worker camps produce 3 wood or 3 ores/cycle, hurt spirits by 2/cycle ➕
-* villages produce 2 food base + 3/cattle within 10 tiles + water spirit fishing bonus every 10 cycles ➕
-* villages evolve to cities when excess wood (>50%) and ores >= 20 ➕
-* villages consume 1 wood/cycle, take disrepair damage if insufficient ➕
-* cities consume 2 wood and 1 ore/cycle, take disrepair damage if insufficient ➕
-* cities produce 1 treasure base + 2 if excess ores ➕
-* cities spawn heroes every 100 cycles when spire exists and excess ores (consume 10 ores) ➕
-* cities spawn spires when treasure >= 50 (at adjacent corner outside walls) ➕
-* ruined cities and villages produce a single bandit pack ❌
+* camps have 2 hit points, villages - 3, cities - 5 ❌
+* ruined cities and villages leave a ruin that produces a single bandit pack after two days ❌
+* ruined settlements disappear after 50 days (Ruins mixin) ➕
 * ruined worker camps disappear (via Mortal mixin) ➕
+* cities and villages have a rotation of daily events ➕
+* event - none 〰
+  - may send a caravan to nearby settlements, the closer - the higher the probability ➕
+  - if village - may occasionally spawn a hero ➕
+  - if city - may occasionally heal ➕
+* event - mourning 〰
+  - if not protected - occurs after being attacked by a dragon ➕
+  - rarely occurs naturally ➕
+  - doesn't send caravans ➕
+* event - market day 〰
+  - occurs every five days, unless mourning is forced ➕
+  - attracts heroes ❌
+  - neighbouring settlements may send a caravan ❌
+  - if city - may occasionally spawn a hero ➕
+* event - the repairs 〰
+  - occurs on the next day after market day if not full hit points, unless mourning is forced ➕
+  - restores a hit point, double that if a hero rests in the settlement ❌
+* worker camps take blessings from nearby spirits 1 at a time ➕
+* worker camps send blessings to their parent settlements the next day after getting one ➕
+* cities that accumulated 10 blessings create a spire on a day after a market day ➕
+* villages and cities send a settler caravan once every 2 days ➕
+* villages are limited to 4 camps (at least one mountain and at least one wood), cities - to 6 (double the village requirement). Requirement is ignored if there are no available spots left ➕
+* villages and cities can also create a camp by a lake that's not counted towards the total ❌
+* a village can occupy a lake without a camp if it's close enough ➕
+* when a city receives a gossip about blessing in a village, it sends a caravan to buy it ❌
+* cities with spires sell blessings to nearby cities ➕
+* ruins hold any blessings the settlement had, persist until pillaged ❌
+* ruins can be pillaged for blessings by heroes and bandits ❌
 
-- spire ➕
+- spire 〰
 * gold tower "Ї" ("1" if ruined), single tile near city ➕
-* shares resources with parent city (no caravan needed) ➕
-* consume 1 ore + 1 treasure every 10 cycles from city ➕
-* take disrepair damage if resources insufficient ➕
-* enable users to summon dragons via summon_dragon() method ➕
+* spires age and crumble after 100 days (Aging mixin) ➕
+* spire ruins disappear after 50 days (Ruins mixin) ➕
+* destroyed along with the city ❌
 
 - caravans ➕
-* if sent to trade - approach settlement, transfer 4 resources/cycle, die(success) when empty ➕
-* if sent to settle camp - pathfind to location, create Camp, die(success) ➕
-* if sent to settle village - pathfind to location, create Village, die(success) ➕
+* if sent to trade - approach settlement, exchange gossip, return home ➕
+* if sent to retrieve a blessing - approach village, buy the blessing, return home ➕
+* if sent to deliver a blessing - approach camp's parent settlement ➕
+* if sent to settle camp - pathfind to location, create camp ➕
 * flee to nearest settlement if target dies ➕
-* camps send return caravans with wood/ores (no food cost) ➕
 
-- bandits ➕
-* hide in forests (pathfind to nearest forest when idle) ➕
-* consume 1 food/cycle, starve damage if empty ➕
-* attack nearby caravans (30% chance within 8 tiles, 10 damage, steal cargo) ➕
-* attack nearby villages when hungry (food < 10, steal 10 food, 5 damage) ➕
+- bandits 〰
+* age and die after 50 days (Aging mixin) ➕
+* don't drop trinkets when dying of old age ➕
+* alternate daily between hiding in forests to ambush caravans, and seeking lairs, treasuries and ruins to pillage 〰
+* when attacking caravans - halt delivery, steal blessing ➕
+* attack nearby villages if haven't robbed or pillaged in 3 days ❌
+* carry up to 3 stolen blessings as trinkets until death ➕
+* if stealing blessings when already having 3, the newly stolen blessings are permanently lost ❌
+* fear dragons ❌
 
-- heroes ➕
-* heal in cities and villages (+2 HP/cycle) ➕
-* escort caravans from home city (priority after threats, before dragon hunting) ➕
-* protect caravans ➕
-* rush to protect nearby villages and cities if they are attacked ➕
-* create parties of 3-5 heroes to defeat dragons ➕
-* seek out dragon treasuries left by dead dragons and send caravans with treasure ❌
+- heroes 〰
+* if spawned from a village - have a brownish color, if from a city - gold ➕
+* become permanently tired after 48 days ➕
+* age and die after 50 days (Aging mixin) ➕
+* don't drop blessings when dying of old age ➕
+* can carry up to 3 blessings that they sell off in the first city they visit ❌
+* won't take more blessings than they can carry ❌
+* have a rotation of daily moods ➕
+* mood - mercenary 〰
+  - escorts a caravan ❌
+* mood - tired 〰
+  - if not a part of a party - occurs after three consecutive non-tired days ❌
+  - protects the settlement they are in ❌
+* mood - adventurous 〰
+  - travels to two different remote settlements in a day ❌
+  - visits other settlements on the way ❌
+  - occasionally explores the area ❌
+  - remembers nearby dragon lairs ❌
+  - bands up with other heroes if any of them remember a domain ❌
+  - rushes to protect nearby caravans and settlements from attacks ❌
+* mood - opportunistic 〰
+  - occurs when a memory of a domain persists for 10 days ❌
+  - attempts to rob the domain when the dragon is missing, hero dies if caught alone ❌
+  - steals 1 blessing if successful ❌
+  - alternatively, occurs the next day after seeing ruins or treasury that hold a blessing ❌
+  - ruins and treasury pillaging takes priority over domain robbery ❌
+  - if pillaging ruins or treasury, takes all the blessings they can ❌
+* mood - vengeful 〰
+  - occurs after a hero learns that a hero they know is killed ❌
+  - travels to two different remote settlements in a day ❌
+  - ignores other settlements, but often explores the area looking for bandits ❌
+  - rushes to protect nearby caravans and settlements from attacks ❌
+* mood - foreboding 〰
+  - occurs the morning when the party is full ❌
+  - mood of the party leader as they lead the attack on the domain ❌
+* mood - subservient 〰
+  - mood of the non-leader party members ❌
+* an incomplete hero party chooses the leader at random and follows them ❌
+* the leader acts as a normal hero until a full hero party of 4 is assembled ❌
+* heroes disband after raiding the domain and become tired, not getting vengeful about their party members ❌
+* heroes can become acquaintances after some shared activities ➕
+  - spending time in the same settlement ➕
+  - protecting or escorting the same people ❌
+  - becoming party members ❌
+  - pillaging the same domain, treasury or ruins ❌
 
-- dragons ➕
-* summoned via spire.summon_dragon(name, properties) ➕
-* create domain "ʘ" at spawn location (single tile, color matches dragon) ➕
-* scorched domains project circle radius 10 with terrain changes and background color ➕
+- dragons 〰
+* when thinking or being talked about, use a set of pronouns defined by user (ex. he/him/his, ae/aer/aers), default it/it/its ➕
+* appear at a random tile that matches the dragon type and is far from other lairs ❌
+* scorched dragons can appear on any tile type ❌
+* a domain is created at the spawn point ➕
+* scorched lairs project circle radius 10 with terrain changes and background color ➕
   - water→cracked bed (ʬ), grass→ash (…), forest→burnt (ɹ/ɺ), mountains→darker ➕
+  - scorched land is considered plains for pathfinding purposes (except mountains) ❌
   - background color #1a0000 (dark red) ➕
-  - removed when domain is pillaged ➕
-* domain can be pillaged when dragon dead or far away (>15 tiles) ➕
-* domains accumulate treasure (1/cycle base, 3/cycle for midas) ➕
+  - removed when dragon is dead, effects reversed ➕
 * type determines symbol/rotation: serpent, brute, blade, druid, midas ➕
 * domain determines color: aquatic (#004080), mountain (#808080), verdant (#008000), flame (#800000) ➕
 * Bresenham-style line movement with error accumulation ➕
-* age and die after 1000 cycles ➕
-* carnivores feed on cattle or fish ❌
-* herbivores occupy grassland to graze ❌
-* greed don't feed, but have increased want for treasure ❌
-* anthropophages seek out people to eat ❌
-* serpents dodge 25% of attacks ❌
-* blade (sharp) ignores diagonal movement penalty (forego_debt=True) ➕
-* brutes deal increased damage to settlements and caravans ❌
-* druids are more effective at tending to spirits ❌
-* midas collect much more treasure passively (3x) ➕
-* have a rotation of wants ❌
-* want - tend to local spirits (more often when old) ❌
-* want - tend to treasury (more often when old) ❌
-* want - pillage cities for treasure (if not good) ❌
-* want - pillage villages and camps (if evil) ❌
-* protect nearby settlements from attackers (if good) ❌
-* attack all foreign entities (if territorial) ❌
+* circle around their target ❌
+* age and die after 20 days + 5 days per existing spire (Aging mixin with dynamic lifespan) ➕
+* carnivores feed on cattle or fish ➕
+* herbivores occupy grassland to graze ➕
+* greed don't feed ➕
+* anthropophages seek out people to eat ➕
+* serpents circle targets in an 8 shape and disorient everyone in a radius when not fighting ❌
+* blades ignore diagonal movement penalty and can't be defended against ❌
+* brutes reduce settlement health to 1 after a single attack, and immediately destroy camps ➕
+* druids tend to all spirits in radius 8 rather than single target ➕
+* midas can accumulate up to 10 blessings in the domain ➕
+* fragile may shed a blessing after fights near where the fight took place ❌
+* dragons can tend to hoard, creating a single blessing per day and storing up to 5 in the domain  ➕
+* dragons will tend to hoard even if they already have 5 blessings ➕
+* dragons can tend a spirit that doesn't have a blessing, bestowing a single blessing ➕
+* have a rotation of daily moods ➕
+* mood - dreary ➕
+  - tends to hoard ➕
+  - if not good - attacks nearby humans ➕
+  - if evil - attacks a settlement ➕
+* mood - inspired ➕
+  - tends to hoard ➕
+  - travels to two spirits far from its domain to tend them ➕
+* mood - pensive ➕
+  - feeds once (tends to hoard if greedy) ➕
+  - travels to a spirit close to its domain to tend it ➕
+* mood - hungry ➕
+  - occurs every three days ➕
+  - feeds, then rests, then feeds again ➕
+  - if anthropophage - feeds only once, may be sated by simply attacking (territorial dragon protecting its domain, good dragon protecting caravan from a bandit) ➕
+  - if greedy - becomes covetous instead ➕
+  - if evil - attacks random human entity instead of resting ➕
+* mood - covetous ➕
+  - attacks a settlement and steals a blessing ➕
+  - if good - becomes inspired instead ➕
+* when territorial dragons are near their domain, they always attack nearby humans ❌
+* a good dragon rushes to protect nearby humans that are attacked ❌
+* an evil dragon attacks humans that are near the spirit the dragon currently tends ❌
 * after death domain becomes pillage-able treasury ➕
+
+- blessing  〰
+* can be carried by a caravan one at a time ➕
+* can be picked up and carried by a hero or a bandit three at a time ➕
+* dropped on ground on death, persist until picked up ➕
+* also dropped on ground after camp death ➕
+* can be pillaged from ruins, lairs and treasuries ❌
+
+# Damage values 〰
+* dragons destroy unprotected caravans and kill bandits ➕
+* dragons deal 1 damage to unprotected settlements ➕
+* bandits deal 1 damage to unprotected settlements, but don't trigger mourning ➕
+* fighting a dragon makes heroes tired, unless the hero is vengeful ➕
+* dragons kill tired heroes that are not in a settlement ➕
+* vengeful heroes kill bandits ➕
+* party of heroes kills a dragon, but one of the heroes must die (two against blade dragons) at random ➕

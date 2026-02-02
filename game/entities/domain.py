@@ -1,5 +1,5 @@
 """Domain - a dragon's treasury and territory marker."""
-from .base import Coordinates, Entity
+from .base import Coordinates, Entity, Mortal
 from typing import TYPE_CHECKING, Dict, Any, List, Tuple
 
 if TYPE_CHECKING:
@@ -12,16 +12,17 @@ SCORCH_RADIUS = 10  # Radius of scorched earth effect
 PILLAGE_TREASURE_AMOUNT = 50  # Treasure gained from pillaging
 
 
-class Domain(Entity):
+class Domain(Entity, Mortal):
     """A dragon's domain - their territory marker and treasury."""
     
     def __init__(self, coordinates: Coordinates, dragon: 'Dragon', is_scorched: bool = False):
         # Domain color matches dragon color
-        super().__init__(dragon.color, "ʘ", coordinates, life=100)
+        super().__init__(dragon.color, "ʘ", coordinates)
         self.dragon = dragon
         self.is_scorched = is_scorched
         self.treasure = 0  # Accumulated treasure
         self.background_color = None  # Background color for scorched domains
+        self.is_treasury = False  # Becomes true when dragon dies
         
         if is_scorched:
             # Scorched domains have a dark background
@@ -87,10 +88,8 @@ class Domain(Entity):
                     elif biome == 'field':
                         overlays[(x, y)] = ('…', '#2F2F2F')  # Ash, dark gray
                     elif biome == 'forest':
-                        # Randomly use either burnt tree symbol
                         overlays[(x, y)] = ('F', "#2E2E2E")  # Burnt, very dark
                     elif biome == 'mountain':
-                        # Mountains lose their snow, become darker
                         overlays[(x, y)] = ('Λ', '#505050')  # Darker mountain
         
         return overlays
@@ -123,7 +122,7 @@ class Domain(Entity):
         
         # If dragon is dead, domain becomes a pillage-able treasury
         if not self.dragon.is_alive:
-            self.life = 1  # Keep domain alive as treasury marker
+            self.is_treasury = True
     
     def serialize(self) -> Dict[str, Any]:
         """Serialize domain to dictionary for JSON output."""

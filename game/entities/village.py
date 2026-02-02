@@ -1,5 +1,6 @@
 """Village settlement."""
-from .base import Coordinates, Named, Settlement, ExpansionMixin
+from .base import Coordinates, Named, Settlement, ExpansionMixin, Ruins
+from .base.settlement_events import SettlementEventsMixin
 from typing import List, Tuple, TYPE_CHECKING
 
 
@@ -8,43 +9,72 @@ if TYPE_CHECKING:
     from game.world import World
 
 
-WOOD_CONSUMPTION = 1
+# Village constants
 RECOVERY_RATE = 1
-BASE_FOOD_GENERATION = 2
-CATTLE_FOOD_BONUS = 3
-CATTLE_FOOD_BONUS_RADIUS = 10
-WATER_FOOD_BONUS = 1
-WATER_FOOD_BONUS_INTERVAL = 10
-WATER_FOOD_BONUS_RADIUS = 10
-
-# Evolution thresholds
-EVOLUTION_WOOD_THRESHOLD = 0.5  # 50% of capacity
-EVOLUTION_ORE_MINIMUM = 20  # Minimum ores required
+LAKE_BLESSING_RADIUS = 10  # Max distance to extract blessing from lake spirit
 
 # Village init constants
 STARTING_LIFE = 500  # Village starting HP
-STORAGE_CAPACITY = 200  # Village storage capacity
 
 
-class Village(Settlement, ExpansionMixin, Named):
+class Village(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
     """3x3 village with fields, homes, and city square."""
+    
+    RUINS_DURATION_DAYS = 50  # Days before ruins disappear
     
     def __init__(self, name: str, coordinates: Coordinates):
         super().__init__(coordinates, life=STARTING_LIFE)
         Named.__init__(self, name)
-        self.storage_capacity = STORAGE_CAPACITY
-        self.last_fishing_cycle = -999  # Last cycle fishing bonus was applied
+        SettlementEventsMixin.__init__(self)
+        self.init_ruins()
         
         # Expansion tracking
-        self.last_caravan_cycle = -999  # Last cycle a caravan was sent
         self.subsidiary_camps: List['Camp | Caravan'] = []
-        self.spirit_fishing_bonus = None  # Cached dict of {spirit: fishing_bonus} (lazy init)
+        
+        # Lake spirit blessing tracking
+        self._nearby_lake_spirits = None  # Cached list (lazy init)
+        self._last_blessing_day = -1
+
+    def on_dawn(self, world: 'World') -> None:
+        """Handle dawn event - process daily settlement event and try to get blessing."""
+        if self.process_ruins(world):
+            return
+        
+        self.process_daily_event(world)
+        self._try_extract_lake_blessing(world)
+        
+        # Natural recovery
+        if self.blessings > 0:
+            self.heal(RECOVERY_RATE)
+    
+    def _try_extract_lake_blessing(self, world: 'World') -> None:
+        """Try to extract a blessing from a nearby lake spirit (once per day)."""
+        current_day = world.day_night_cycle.get_current_time().day
+        if current_day == self._last_blessing_day:
+            return
+        
+        # Lazy init nearby lake spirits cache
+        if self._nearby_lake_spirits is None:
+            self._nearby_lake_spirits = []
+            for entity in world.entities:
+                if entity.__class__.__name__ == 'Spirit' and entity.type == 'water':
+                    if self.get_distance(entity.coordinates) <= LAKE_BLESSING_RADIUS:
+                        self._nearby_lake_spirits.append(entity)
+        
+        # Try to get blessing from nearest lake spirit with one available
+        for spirit in self._nearby_lake_spirits:
+            if spirit.is_alive and spirit.has_blessing:
+                spirit.take_blessing()
+                self.blessings += 1
+                self._last_blessing_day = current_day
+                self.think(f"Received blessing from the lake spirit.")
+                return
 
     def get_max_camps(self) -> int:
-        return 3
+        return 4  # Villages can have up to 4 camps (1 forest + 1 mountain + 2 any)
 
     def get_prioritized_resource(self) -> str:
-        return 'wood'
+        return 'forest'  # Villages prioritize forest camps
 
     def get_prioritized_resource_count(self) -> int:
         return 2
@@ -85,92 +115,3 @@ class Village(Settlement, ExpansionMixin, Named):
                 ((x, y + 1), "₼", "#808080"),  # Gate (grey)
                 ((x + 1, y + 1), "#", "#FFD700"),  # Bottom right field
             ]
-    
-    def can_evolve(self) -> bool:
-        """Check if village meets evolution requirements."""
-        return (self.resources['wood'] > self.storage_capacity * EVOLUTION_WOOD_THRESHOLD 
-                and self.resources['ores'] >= EVOLUTION_ORE_MINIMUM)
-    
-    def promote_to_city(self, world: 'World') -> 'City':
-        """Promote this village to a city, transferring all state."""
-        from .city import City
-        city = City(self.name, self.coordinates)
-        city.life = self.life
-        city.resources = self.resources.copy()
-        city.subsidiary_camps = self.subsidiary_camps.copy()
-        
-        # Update camp homes to point to city
-        for camp in city.subsidiary_camps:
-            if hasattr(camp, 'home'):
-                camp.home = city
-        
-        # Replace self in world
-        world.remove_entity(self)
-        world.add_entity(city)
-        
-        return city
-    
-    def generate_resources(self, world : 'World') -> None:
-        """Generate food resources each cycle.
-        - Base: 3 food
-        - +3 food for each cattle within 10 tiles
-        - +1 food for each water tile in a spirit's domain within 10 tiles (once per 10 cycles)
-        """
-        if self.is_dead:
-            return
-        
-        food_generated = BASE_FOOD_GENERATION
-        
-        # Check for cattle within 10 tiles
-        for entity in world.entities:
-            if entity.__class__.__name__ == 'Cattle':
-                if self.get_distance(entity.coordinates) <= CATTLE_FOOD_BONUS_RADIUS:
-                    food_generated += CATTLE_FOOD_BONUS
-        
-        # Fishing bonus - only once every 10 cycles
-        if world.update_count - self.last_fishing_cycle >= WATER_FOOD_BONUS_INTERVAL:
-            # Lazy initialization of spirit fishing bonus cache
-            if self.spirit_fishing_bonus is None:
-                self.spirit_fishing_bonus = {}
-                
-                for entity in world.entities:
-                    if entity.__class__.__name__ == 'Spirit' and entity.type == 'water':
-                        # Calculate and cache fishing bonus for this spirit
-                        bonus = 0
-                        for tile_x, tile_y in entity.domain_tiles:
-                            if self.get_distance((tile_x, tile_y)) <= WATER_FOOD_BONUS_RADIUS:
-                                bonus += WATER_FOOD_BONUS
-                        if bonus > 0:
-                            self.spirit_fishing_bonus[entity] = bonus
-            
-            # Sum cached fishing bonuses for alive spirits
-            fishing_bonus = 0
-            for spirit, bonus in self.spirit_fishing_bonus.items():
-                if spirit.is_alive:
-                    fishing_bonus += bonus
-            
-            if fishing_bonus > 0:
-                food_generated += fishing_bonus
-                # Mark that we applied fishing bonus this cycle
-                self.last_fishing_cycle = world.update_count
-        
-        # Add generated food to storage (capped by capacity)
-        self.add_resource('food', food_generated)
-
-    
-    def consume_resources(self, world: 'World') -> str:
-        """Villages consume 1 wood per cycle."""
-        if self.is_dead:
-            return
-        
-        wood_consumed = self.remove_resource('wood', WOOD_CONSUMPTION)
-        
-        # If couldn't consume enough wood, disrepair
-        if wood_consumed < WOOD_CONSUMPTION:
-            self.hurt(world, WOOD_CONSUMPTION - wood_consumed, 'disrepair')
-        else:
-            self.heal(RECOVERY_RATE)  # Heal 1 life if wood needs met
-        
-        # Check for evolution to city
-        if self.can_evolve():
-            self.promote_to_city(world)

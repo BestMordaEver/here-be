@@ -1,7 +1,9 @@
-"""Hero - protector of settlements and slayer of dragons."""
-from .base import Coordinates, Mobile, Thinking, Mortal, Settlement
-from typing import TYPE_CHECKING, Dict, Any, List
-import random
+"""Hero entity with mood-based daily scheduling."""
+from enum import Enum
+from random import random, choice, randint
+from typing import TYPE_CHECKING, Dict, Any, List, Optional, Set
+
+from .base import Coordinates, Mobile, Thinking, Mortal, Settlement, Scheduled, ActionType, ScheduledAction, Aging
 
 if TYPE_CHECKING:
     from game.world import World
@@ -9,33 +11,60 @@ if TYPE_CHECKING:
 
 
 # Hero constants
-STARTING_LIFE = 100  # Hero starting HP
-HEAL_RATE = 2  # HP healed per cycle in settlement
-PATROL_RANGE = 15  # Range to look for threats
-PROTECTION_RANGE = 10  # Range to rush to defend
-ESCORT_RANGE = 20  # Range to look for caravans to escort
-ATTACK_DAMAGE = 15  # Damage dealt to enemies
-ATTACK_COOLDOWN = 5  # Cycles between attacks
-PARTY_SIZE_MIN = 3
-PARTY_SIZE_MAX = 5
-LOITER_TIME = 2  # Cycles between movements
+PROTECTION_RANGE = 10      # Range to rush to defend
+PATROL_RANGE = 15          # Range to look for threats
+MAX_BLESSINGS = 3          # Max blessings hero can carry
+PARTY_SIZE = 4             # Heroes needed for dragon raid
+TIRED_AFTER_DAYS = 48      # Hero becomes permanently tired
+TIRED_THRESHOLD = 3        # Consecutive non-tired days before becoming tired
 
 
-class Hero(Mortal, Mobile, Thinking):
-    """A hero that protects settlements and fights dragons."""
+class HeroMood(Enum):
+    """Hero daily moods."""
+    MERCENARY = "mercenary"
+    TIRED = "tired"
+    ADVENTUROUS = "adventurous"
+    OPPORTUNISTIC = "opportunistic"
+    VENGEFUL = "vengeful"
+    FOREBODING = "foreboding"
+    SUBSERVIENT = "subservient"
+
+
+class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
+    """A hero that protects settlements and slays dragons."""
     
-    def __init__(self, coordinates: Coordinates, home: 'City'):
-        Mobile.__init__(self, "#FFD700", "♦", coordinates, life=STARTING_LIFE)  # Gold color
+    LIFESPAN_DAYS = 50  # Hero dies after this many days
+    
+    def __init__(self, coordinates: Coordinates, home: 'City | Village', city_born: bool = True):
+        # City heroes are gold, village heroes are brownish
+        color = "#FFD700" if city_born else "#8B6914"
+        
+        Mobile.__init__(self, color, "♦", coordinates, loiter=1)  # Heroes skip 1 cycle
         Thinking.__init__(self, intent="patrolling")
+        Scheduled.__init__(self)
+        self.init_aging()
+        
         self.home = home
-        self.loiter = LOITER_TIME
-        self.path: List[Coordinates] = []
-        self.last_attack_cycle = -999
-        self.party: List['Hero'] = None  # Party for dragon hunting
-        self.target_entity = None  # Current target (bandit, dragon, etc.)
+        self.city_born = city_born
+        self.mood = HeroMood.ADVENTUROUS
+        self.consecutive_active_days = 0  # Days without being tired
+        self.is_permanently_tired = False
+        
+        # Party management
+        self.party: Optional[List['Hero']] = None
+        self.party_leader: Optional['Hero'] = None
+        
+        # Inventory
+        self.blessings = 0
+        
+        # Memory
+        self.known_domains: Set = set()  # Domain locations
+        self.acquaintances: Set['Hero'] = set()  # Heroes we know
+        self.days_domain_known: Dict = {}  # domain -> days since learned
+        self.dead_friend: Optional['Hero'] = None  # Friend who died (triggers vengeful)
     
-    def is_passable(self, coordinates: Coordinates, world) -> bool:
-        """Heroes can move through fields."""
+    def is_passable(self, coordinates: Coordinates, world: 'World') -> bool:
+        """Heroes can move through fields and forests."""
         x, y = coordinates
         if x < 0 or y < 0 or x >= len(world.height_map[0]) or y >= len(world.height_map):
             return False
@@ -43,13 +72,9 @@ class Hero(Mortal, Mobile, Thinking):
         height = world.height_map[y][x]
         biome = world.get_biome_from_height(height)
         
-        # Can move through fields and forests
-        if biome not in ('field', 'forest'):
-            return False
-        
-        return True
+        return biome in ('field', 'forest')
     
-    def is_in_settlement(self, world) -> bool:
+    def is_in_settlement(self, world: 'World') -> bool:
         """Check if hero is currently in a settlement."""
         for entity in world.entities:
             if isinstance(entity, Settlement) and entity.is_alive:
@@ -57,217 +82,489 @@ class Hero(Mortal, Mobile, Thinking):
                     return True
         return False
     
-    def find_nearby_threat(self, world) -> tuple:
-        """Find nearby threats (bandits attacking, caravans in danger).
-        Returns (threat_entity, victim_entity) or (None, None)."""
-        # Check for bandits near caravans or villages
+    def get_current_settlement(self, world: 'World') -> Optional[Settlement]:
+        """Get the settlement the hero is currently in."""
         for entity in world.entities:
-            if entity.__class__.__name__ == 'Bandit' and entity.is_alive:
-                dist = self.get_distance(entity.coordinates)
-                if dist <= PROTECTION_RANGE:
-                    # Check if bandit is threatening something
-                    for target in world.entities:
-                        if target.__class__.__name__ in ('Caravan', 'Village') and target.is_alive:
-                            if entity.get_distance(target.coordinates) <= 5:
-                                return (entity, target)
-        
-        return (None, None)
-    
-    def find_dragon(self, world) -> 'Dragon':
-        """Find a dragon to hunt (requires party)."""
-        for entity in world.entities:
-            if entity.__class__.__name__ == 'Dragon' and entity.is_alive:
-                return entity
+            if isinstance(entity, Settlement) and entity.is_alive:
+                if entity.occupies(self.coordinates):
+                    return entity
         return None
     
-    def find_nearby_heroes(self, world) -> List['Hero']:
-        """Find other heroes nearby for forming a party."""
+    def determine_mood(self, world: 'World') -> HeroMood:
+        """Determine today's mood based on conditions."""
+        # Permanently tired after 48 days
+        if self.is_permanently_tired or self.age_days >= TIRED_AFTER_DAYS:
+            self.is_permanently_tired = True
+            return HeroMood.TIRED
+        
+        # Following a party leader
+        if self.party_leader and self.party_leader != self:
+            return HeroMood.SUBSERVIENT
+        
+        # Leading a full party
+        if self.party and len(self.party) >= PARTY_SIZE:
+            return HeroMood.FOREBODING
+        
+        # Vengeful if friend died recently
+        if self.dead_friend:
+            self.dead_friend = None  # Clear after one day of vengeance
+            return HeroMood.VENGEFUL
+        
+        # Opportunistic if domain known for 10+ days or sees ruins/treasury
+        if self.days_domain_known:
+            for domain, days in self.days_domain_known.items():
+                if days >= 10:
+                    return HeroMood.OPPORTUNISTIC
+        
+        # Check for ruins/treasury nearby
+        for entity in world.entities:
+            if entity.__class__.__name__ == 'Domain' and hasattr(entity, 'is_treasury') and entity.is_treasury:
+                if self.get_distance(entity.coordinates) <= 30:
+                    return HeroMood.OPPORTUNISTIC
+        
+        # Tired after 3 consecutive active days
+        if self.consecutive_active_days >= TIRED_THRESHOLD:
+            self.consecutive_active_days = 0
+            return HeroMood.TIRED
+        
+        # Random between mercenary and adventurous
+        if random() < 0.3:
+            return HeroMood.MERCENARY
+        else:
+            return HeroMood.ADVENTUROUS
+    
+    def build_schedule(self, world: 'World') -> None:
+        """Build the day's schedule based on mood."""
+        self.schedule = []
+        self.current_action = None
+        
+        self.mood = self.determine_mood(world)
+        
+        # Increment domain knowledge age
+        for domain in list(self.days_domain_known.keys()):
+            self.days_domain_known[domain] += 1
+        
+        if self.mood == HeroMood.MERCENARY:
+            self._schedule_mercenary(world)
+            self.consecutive_active_days += 1
+        elif self.mood == HeroMood.TIRED:
+            self._schedule_tired(world)
+        elif self.mood == HeroMood.ADVENTUROUS:
+            self._schedule_adventurous(world)
+            self.consecutive_active_days += 1
+        elif self.mood == HeroMood.OPPORTUNISTIC:
+            self._schedule_opportunistic(world)
+            self.consecutive_active_days += 1
+        elif self.mood == HeroMood.VENGEFUL:
+            self._schedule_vengeful(world)
+            self.consecutive_active_days += 1
+        elif self.mood == HeroMood.FOREBODING:
+            self._schedule_foreboding(world)
+            self.consecutive_active_days += 1
+        elif self.mood == HeroMood.SUBSERVIENT:
+            self._schedule_subservient(world)
+            self.consecutive_active_days += 1
+        
+        self.think(f"Today I feel {self.mood.value}.")
+    
+    def _schedule_mercenary(self, world: 'World') -> None:
+        """Escort a caravan."""
+        caravan = self._find_caravan_to_escort(world)
+        if caravan:
+            self.add_scheduled_action(8, ActionType.ESCORT, caravan)
+        else:
+            self._schedule_adventurous(world)
+    
+    def _schedule_tired(self, world: 'World') -> None:
+        """Rest and protect current settlement."""
+        settlement = self.get_current_settlement(world)
+        if settlement:
+            self.add_scheduled_action(8, ActionType.REST)
+            self.add_scheduled_action(12, ActionType.PROTECT, settlement)
+        elif self.home and self.home.is_alive:
+            self.add_scheduled_action(8, ActionType.MOVE_TO, self.home)
+            self.add_scheduled_action(14, ActionType.REST)
+    
+    def _schedule_adventurous(self, world: 'World') -> None:
+        """Travel to remote settlements, explore."""
+        settlements = self._find_remote_settlements(world, count=2)
+        if len(settlements) >= 1:
+            self.add_scheduled_action(8, ActionType.MOVE_TO, settlements[0])
+        if len(settlements) >= 2:
+            self.add_scheduled_action(14, ActionType.MOVE_TO, settlements[1])
+        if random() < 0.3:
+            self.add_scheduled_action(11, ActionType.PATROL)
+    
+    def _schedule_opportunistic(self, world: 'World') -> None:
+        """Pillage ruins/treasury or rob unguarded domain."""
+        target = self._find_pillage_target(world)
+        if target:
+            self.add_scheduled_action(9, ActionType.MOVE_TO, target)
+            self.add_scheduled_action(13, ActionType.PILLAGE, target)
+        else:
+            domain = self._find_unguarded_domain(world)
+            if domain:
+                self.add_scheduled_action(10, ActionType.MOVE_TO, domain)
+                self.add_scheduled_action(14, ActionType.PILLAGE, domain)
+            else:
+                self._schedule_adventurous(world)
+    
+    def _schedule_vengeful(self, world: 'World') -> None:
+        """Hunt bandits."""
+        self.add_scheduled_action(8, ActionType.PATROL)
+        self.add_scheduled_action(12, ActionType.PATROL)
+        self.add_scheduled_action(16, ActionType.PATROL)
+    
+    def _schedule_foreboding(self, world: 'World') -> None:
+        """Lead party to attack dragon domain."""
+        if not self.party:
+            self._schedule_adventurous(world)
+            return
+        domain = self._find_known_domain(world)
+        if domain:
+            self.add_scheduled_action(8, ActionType.MOVE_TO, domain)
+            self.add_scheduled_action(12, ActionType.ATTACK, domain)
+        else:
+            self._schedule_adventurous(world)
+    
+    def _schedule_subservient(self, world: 'World') -> None:
+        """Follow the party leader."""
+        if self.party_leader:
+            self.add_scheduled_action(8, ActionType.ESCORT, self.party_leader)
+        else:
+            self.party = None
+            self._schedule_adventurous(world)
+    
+    def _find_caravan_to_escort(self, world: 'World') -> Optional[Any]:
+        """Find a caravan to escort."""
+        for entity in world.entities:
+            if entity.__class__.__name__ == 'Caravan' and entity.is_alive:
+                if self.get_distance(entity.coordinates) <= 30:
+                    return entity
+        return None
+    
+    def _find_remote_settlements(self, world: 'World', count: int = 2) -> List[Settlement]:
+        """Find distant settlements to visit."""
+        settlements = []
+        for entity in world.entities:
+            if isinstance(entity, Settlement) and entity.is_alive:
+                dist = self.get_distance(entity.coordinates)
+                if dist > 20:  # Remote = more than 20 tiles away
+                    settlements.append((dist, entity))
+        
+        settlements.sort(key=lambda x: x[0], reverse=True)
+        return [s[1] for s in settlements[:count]]
+    
+    def _find_pillage_target(self, world: 'World') -> Optional[Any]:
+        """Find ruins or treasury to pillage."""
+        for entity in world.entities:
+            # Treasury
+            if entity.__class__.__name__ == 'Domain':
+                if hasattr(entity, 'is_treasury') and entity.is_treasury:
+                    if hasattr(entity, 'treasure') and entity.treasure > 0:
+                        return entity
+            
+            # Ruins
+            if entity.__class__.__name__ in ('Village', 'City'):
+                if entity.is_dead:
+                    return entity
+        
+        return None
+    
+    def _find_unguarded_domain(self, world: 'World') -> Optional[Any]:
+        """Find a domain whose dragon is away."""
+        for entity in world.entities:
+            if entity.__class__.__name__ == 'Domain' and entity.is_alive:
+                if hasattr(entity, 'owner') and entity.owner:
+                    dragon = entity.owner
+                    # Check if dragon is far from domain
+                    if dragon.get_distance(entity.coordinates) > 15:
+                        return entity
+        return None
+    
+    def _find_known_domain(self, world: 'World') -> Optional[Any]:
+        """Find a domain we know about."""
+        for domain in self.known_domains:
+            for entity in world.entities:
+                if entity.__class__.__name__ == 'Domain' and entity.is_alive:
+                    if entity.coordinates == domain:
+                        return entity
+        return None
+    
+    def _find_nearby_heroes(self, world: 'World') -> List['Hero']:
+        """Find other heroes nearby for party formation."""
         heroes = []
         for entity in world.entities:
             if entity.__class__.__name__ == 'Hero' and entity.is_alive and entity != self:
                 if self.get_distance(entity.coordinates) <= PATROL_RANGE:
-                    if entity.party is None:  # Not already in a party
+                    if not entity.party:  # Not already in a party
                         heroes.append(entity)
         return heroes
     
-    def form_party(self, world) -> bool:
-        """Try to form a party for dragon hunting."""
-        if self.party is not None:
-            return True  # Already in a party
+    def try_form_party(self, world: 'World') -> bool:
+        """Try to form a dragon-hunting party."""
+        if self.party:
+            return True
         
-        nearby_heroes = self.find_nearby_heroes(world)
+        nearby = self._find_nearby_heroes(world)
         
-        # Need at least PARTY_SIZE_MIN - 1 other heroes (plus self)
-        if len(nearby_heroes) >= PARTY_SIZE_MIN - 1:
-            party_size = min(len(nearby_heroes) + 1, PARTY_SIZE_MAX)
-            party = [self] + nearby_heroes[:party_size - 1]
+        if len(nearby) >= PARTY_SIZE - 1:
+            party = [self] + nearby[:PARTY_SIZE - 1]
             
-            # Set party reference for all members
-            for hero in party:
+            # Set up party
+            self.party = party
+            self.party_leader = self
+            
+            for hero in party[1:]:
                 hero.party = party
-                hero.intent = "dragon hunting"
+                hero.party_leader = self
+                hero.mood = HeroMood.SUBSERVIENT
+                self.acquaintances.add(hero)
+                hero.acquaintances.add(self)
             
             return True
         
         return False
     
-    def find_caravan_to_escort(self, world) -> 'Caravan':
-        """Find a caravan from home city that needs escorting."""
-        if not self.home or not self.home.is_alive:
-            return None
+    def disband_party(self, world: 'World') -> None:
+        """Disband the party after raid."""
+        if not self.party:
+            return
         
-        # Look for caravans from our home city
-        for entity in world.entities:
-            if entity.__class__.__name__ == 'Caravan' and entity.is_alive:
-                # Check if caravan is from our home city
-                if hasattr(entity, 'home') and entity.home == self.home:
-                    # Check if caravan is within escort range
-                    if self.get_distance(entity.coordinates) <= ESCORT_RANGE:
-                        # Check if caravan is not already being escorted by another hero
-                        escort_count = 0
-                        for other in world.entities:
-                            if other.__class__.__name__ == 'Hero' and other.is_alive:
-                                if hasattr(other, 'target_entity') and other.target_entity == entity:
-                                    if other.intent == "escorting":
-                                        escort_count += 1
-                        
-                        # Only escort if not already being escorted
-                        if escort_count == 0:
-                            return entity
+        for hero in self.party:
+            hero.party = None
+            hero.party_leader = None
+            hero.mood = HeroMood.TIRED
+            hero.consecutive_active_days = 0
+        
+        self.party = None
+        self.party_leader = None
+    
+    def on_hour(self, world: 'World', hour: int) -> None:
+        """Process hourly updates."""
+        if self.is_sleeping:
+            return
+        
+        # Sell blessings if in city
+        if self.blessings > 0:
+            settlement = self.get_current_settlement(world)
+            if settlement and settlement.__class__.__name__ == 'City':
+                # Sell all blessings
+                if hasattr(settlement, 'blessings'):
+                    settlement.blessings += self.blessings
+                self.blessings = 0
+                self.think("Sold my treasures in the city.")
+        
+        # Try to form party if adventurous and see dragons
+        if self.mood == HeroMood.ADVENTUROUS and not self.party:
+            for entity in world.entities:
+                if entity.__class__.__name__ in ('Dragon', 'DragonBase', 'Domain'):
+                    if self.get_distance(entity.coordinates) <= PATROL_RANGE:
+                        self.known_domains.add(entity.coordinates)
+                        self.days_domain_known[entity.coordinates] = 0
+        
+        # Check for scheduled action
+        action = self.get_action_for_hour(hour)
+        if action:
+            self.start_action(action)
+            self._execute_action_start(world, action)
+    
+    def _execute_action_start(self, world: 'World', action: ScheduledAction) -> None:
+        """Start executing a scheduled action."""
+        if action.action_type == ActionType.MOVE_TO:
+            if hasattr(action.target, 'coordinates'):
+                self.set_destination(action.target.coordinates, world)
+            elif isinstance(action.target, tuple):
+                self.set_destination(action.target, world)
+            else:
+                self.complete_current_action()
+                
+        elif action.action_type == ActionType.REST:
+            self.think("I rest my weary bones.")
+            self.complete_current_action()
+            
+        elif action.action_type == ActionType.PATROL:
+            # Pick random patrol location
+            x = self.coordinates[0] + randint(-PATROL_RANGE, PATROL_RANGE)
+            y = self.coordinates[1] + randint(-PATROL_RANGE, PATROL_RANGE)
+            x = max(0, min(world.WIDTH - 1, x))
+            y = max(0, min(world.HEIGHT - 1, y))
+            self.set_destination((x, y), world)
+            
+        elif action.action_type == ActionType.ESCORT:
+            if action.target and hasattr(action.target, 'coordinates'):
+                self.set_target_entity(action.target, world)
+            else:
+                self.complete_current_action()
+                
+        elif action.action_type == ActionType.PROTECT:
+            # Stay near target
+            if action.target and hasattr(action.target, 'coordinates'):
+                self.set_destination(action.target.coordinates, world)
+            else:
+                self.complete_current_action()
+                
+        elif action.action_type == ActionType.PILLAGE:
+            if action.target and hasattr(action.target, 'coordinates'):
+                self.set_destination(action.target.coordinates, world)
+            else:
+                self.complete_current_action()
+                
+        elif action.action_type == ActionType.ATTACK:
+            if action.target and hasattr(action.target, 'coordinates'):
+                self.set_target_entity(action.target, world)
+            else:
+                self.complete_current_action()
+    
+    def on_arrival(self, world: 'World') -> None:
+        """Called when arriving at destination."""
+        if not self.current_action:
+            return
+        
+        action = self.current_action
+        
+        if action.action_type == ActionType.PILLAGE:
+            self._execute_pillage(world)
+        elif action.action_type == ActionType.ATTACK:
+            self._execute_attack(world)
+        else:
+            self.complete_current_action()
+    
+    def _execute_pillage(self, world: 'World') -> None:
+        """Pillage ruins/treasury/domain."""
+        target = self.target_entity
+        
+        if target and hasattr(target, 'treasure') and target.treasure > 0:
+            take = min(MAX_BLESSINGS - self.blessings, target.treasure)
+            self.blessings += take
+            target.treasure -= take
+            self.think(f"Claimed {take} blessings!")
+        
+        self.complete_current_action()
+    
+    def _execute_attack(self, world: 'World') -> None:
+        """Attack a target (dragon domain or entity)."""
+        from game.world.combat import resolve_attack
+        
+        target = self.target_entity
+        
+        if not target:
+            self.complete_current_action()
+            return
+        
+        # If attacking a domain, get the dragon
+        if hasattr(target, 'owner') and target.owner and target.owner.is_alive:
+            resolve_attack(self, target.owner, world)
+        elif hasattr(target, 'owner') and (not target.owner or not target.owner.is_alive):
+            # Dragon dead, pillage instead
+            self._execute_pillage(world)
+            return
+        elif hasattr(target, 'is_alive') and target.is_alive:
+            resolve_attack(self, target, world)
+        
+        self.complete_current_action()
+    
+    def check_for_encounters(self, world: 'World') -> Optional[Mobile]:
+        """Check for threats to protect against."""
+        nearby = self.get_nearby_entities(world, PROTECTION_RANGE)
+        
+        for entity in nearby:
+            # Attack bandits (always if vengeful)
+            if entity.__class__.__name__ == 'Bandit':
+                if self.mood == HeroMood.VENGEFUL or random() < 0.7:
+                    return entity
+            
+            # Protect caravans/settlements from bandits
+            if entity.__class__.__name__ in ('Caravan', 'Village', 'Camp'):
+                # Check if being attacked by bandit
+                for other in self.get_nearby_entities(world, PROTECTION_RANGE):
+                    if other.__class__.__name__ == 'Bandit':
+                        return other
         
         return None
     
-    def choose_target(self, world) -> None:
-        """Decide what to do based on current situation."""
-        # Priority 1: Respond to nearby threats
-        threat, victim = self.find_nearby_threat(world)
-        if threat:
-            self.target_entity = threat
-            self.destination = threat.coordinates
-            self.intent = "protecting"
-            self.path = self.find_path(threat.coordinates, world)
-            self.state = "moving"
-            return
-        
-        # Priority 2: Escort caravans from home city
-        caravan = self.find_caravan_to_escort(world)
-        if caravan:
-            self.target_entity = caravan
-            self.destination = caravan.coordinates
-            self.intent = "escorting"
-            self.path = self.find_path(caravan.coordinates, world)
-            self.state = "moving"
-            return
-        
-        # Priority 3: Form party and hunt dragons
-        dragon = self.find_dragon(world)
-        if dragon and (self.party or self.form_party(world)):
-            self.target_entity = dragon
-            self.destination = dragon.coordinates
-            self.intent = "dragon hunting"
-            self.path = self.find_path(dragon.coordinates, world)
-            self.state = "moving"
-            return
-        
-        # Priority 4: Patrol near home city
-        if self.home.is_alive:
-            # Random patrol destination near home
-            hx, hy = self.home.coordinates
-            dx = random.randint(-PATROL_RANGE, PATROL_RANGE)
-            dy = random.randint(-PATROL_RANGE, PATROL_RANGE)
-            target = (hx + dx, hy + dy)
-            
-            if self.is_passable(target, world):
-                self.destination = target
-                self.intent = "patrolling"
-                self.path = self.find_path(target, world)
-                self.state = "moving"
-                return
-        
-        # Default: stay put
-        self.intent = "resting"
-        self.state = "arrived"
-    
-    def approach_target(self, world) -> None:
-        """Move towards current destination."""
-        # Update path if target moved
-        if self.target_entity and hasattr(self.target_entity, 'coordinates'):
-            if self.target_entity.is_alive:
-                self.destination = self.target_entity.coordinates
-                
-                # For escorting, stay close but don't crowd the caravan
-                if self.intent == "escorting":
-                    distance = self.get_distance(self.destination)
-                    # Stay within 2-3 tiles of caravan
-                    if distance <= 3:
-                        # Close enough, don't move closer
-                        self.state = "arrived"
-                        return
-                
-                self.path = self.find_path(self.destination, world)
+    def react_to_encounter(self, world: 'World', other: 'Mobile') -> Optional[ScheduledAction]:
+        """React to an encountered entity."""
+        if other.__class__.__name__ == 'Bandit':
+            if self.mood == HeroMood.VENGEFUL:
+                # Vengeful heroes kill bandits
+                other.die(world, "slain by vengeful hero")
+                self.think("Vengeance is mine!")
+                return None
             else:
-                # Target died, clear it
-                self.target_entity = None
-                self.state = "arrived"
-                return
+                # Attack bandit
+                return ScheduledAction(
+                    hour=world.time.current_hour,
+                    action_type=ActionType.ATTACK,
+                    target=other,
+                    priority=10
+                )
         
-        if not self.path and self.destination:
-            self.path = self.find_path(self.destination, world)
-        
-        if self.path:
-            next_step = self.path.pop(0)
-            self.move_to(next_step)
+        return None
     
-    def attack(self, target, world) -> None:
-        """Attack an enemy."""
-        if hasattr(target, 'hurt'):
-            target.hurt(world, ATTACK_DAMAGE, "hero attack")
-            self.think(f"Strike! For the city!")
-            self.last_attack_cycle = world.update_count
+    def on_old_age_death(self, world: 'World') -> None:
+        """Clear blessings before dying of old age so nothing drops."""
+        self.blessings = 0
     
-    def update(self, world: 'World') -> None:
-        # Heal if in settlement
-        if self.is_in_settlement(world):
-            self.heal(HEAL_RATE)
+    def on_dawn(self, world: 'World') -> None:
+        """Dawn: age, check death, build schedule."""
+        self.is_sleeping = False
         
-        # Generate thoughts
-        self.generate_thought(world)
+        if self.process_aging(world):
+            return
         
-        super().update(world)
+        self.build_schedule(world)
+    
+    def die(self, world: 'World', reason: str) -> None:
+        """Handle hero death."""
+        # Drop blessings (already 0 if old age via on_old_age_death)
+        if self.blessings > 0:
+            from .blessing import drop_blessing
+            drop_blessing(world, self.coordinates, self.blessings)
+            self.blessings = 0
         
-        # Attack nearby enemies
-        if world.update_count - self.last_attack_cycle >= ATTACK_COOLDOWN:
-            # Check for adjacent enemies
-            for entity in world.entities:
-                if entity.__class__.__name__ in ('Bandit', 'Dragon') and entity.is_alive:
-                    if self.get_distance(entity.coordinates) <= 2:
-                        self.attack(entity, world)
-                        break
+        super().die(world, reason)
         
-        # Choose new action if needed
-        if self.state in ("created", "arrived"):
-            self.target_entity = None
-            self.choose_target(world)
+        # Notify acquaintances
+        for friend in self.acquaintances:
+            if friend.is_alive:
+                friend.dead_friend = self
         
-        # Disband party if dragon is dead
-        if self.party and self.target_entity:
-            if hasattr(self.target_entity, 'is_dead') and self.target_entity.is_dead:
-                for hero in self.party:
-                    hero.party = None
-                    hero.target_entity = None
-                    hero.intent = "patrolling"
+        # Leave party
+        if self.party:
+            self.party.remove(self)
+    
+    def update_movement(self, world: 'World') -> None:
+        """Update movement and pick up any blessings at current location."""
+        super().update_movement(world)
+        
+        # Try to pick up blessings at current location
+        if self.blessings < MAX_BLESSINGS:
+            self._try_pickup_blessings(world)
+    
+    def _try_pickup_blessings(self, world: 'World') -> None:
+        """Pick up dropped blessings at current location."""
+        from .blessing import Blessing
+        
+        for entity in world.entities:
+            if isinstance(entity, Blessing) and entity.coordinates == self.coordinates:
+                can_take = MAX_BLESSINGS - self.blessings
+                taken = entity.take(can_take)
+                if taken > 0:
+                    self.blessings += taken
+                    self.think(f"Found {taken} blessing{'s' if taken > 1 else ''}!")
+                break
     
     def serialize(self) -> Dict[str, Any]:
-        """Serialize hero to dictionary for JSON output."""
+        """Serialize for JSON output."""
         data = super().serialize()
-        data["home"] = self.home.name if self.home else "none"
-        data["intent"] = self.intent
-        data["in_party"] = self.party is not None
-        target_info = "none"
-        if self.target_entity:
-            if hasattr(self.target_entity, 'name'):
-                target_info = self.target_entity.name
-            else:
-                target_info = self.target_entity.__class__.__name__
-        data["debug_info"] = f"Hero at {self.coordinates} intent: {self.intent}, target: {target_info}, party: {len(self.party) if self.party else 0}"
+        data.update({
+            "home": self.home.name if self.home and hasattr(self.home, 'name') else "none",
+            "mood": self.mood.value,
+            "age_days": self.age_days,
+            "blessings": self.blessings,
+            "in_party": self.party is not None,
+            "is_leader": self.party_leader == self if self.party else False,
+            "schedule": self.get_schedule_summary(),
+        })
         return data

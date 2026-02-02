@@ -1,98 +1,153 @@
-from .base import Coordinates, Mobile, Settlement, Mortal
-import random
+"""Cattle entity with day-based wandering and fear reactions."""
+from random import randint, random
+from typing import TYPE_CHECKING, Dict, Any, Optional
+
+from .base import Coordinates, Mobile, Settlement, Mortal, Scheduled, ActionType, ScheduledAction
+
+if TYPE_CHECKING:
+    from game.world import World
 
 
 # Cattle constants
 VILLAGE_ATTRACTION_RADIUS = 10  # Distance to check for villages
-SETTLEMENT_MIN_DISTANCE = 3  # Minimum distance from settlement
-SETTLEMENT_MAX_DISTANCE = 6  # Maximum distance from settlement
-WANDER_RANGE = 10  # Random wander distance
-LOITER_TIME = 10  # Cycles between movements
-DESTINATION_ATTEMPTS = 10  # Attempts to find valid destination
+WANDER_RANGE = 10              # Random wander distance
+FEAR_RADIUS = 12               # Distance to notice threats
+SCORCHED_FEAR_RADIUS = 8       # Distance to avoid scorched land
 
 
-class Cattle(Mortal, Mobile):
+class Cattle(Mortal, Mobile, Scheduled):
+    """Cattle that wander and graze, fearing dragons and scorched land."""
     
-    def __init__(
-        self,
-        color: str,
-        coordinates: Coordinates,
-        life: int,
-    ):
-        super().__init__(color, 'ɤ', coordinates, life)
-        self.state="grazing"
-        self.loiter = LOITER_TIME
-        self.path: list[Coordinates] = []  # Current path to follow
-    
-    def is_passable(self, coordinates: Coordinates, world) -> bool:
-        """Check if a tile is passable (field or open area, not through settlements)."""
+    def __init__(self, color: str, coordinates: Coordinates):
+        Mobile.__init__(self, color, 'ɤ', coordinates, loiter=10)  # Cattle skip 10 cycles
+        Scheduled.__init__(self)
         
+        self.grazing = True
+        self.fleeing_from = None
+    
+    def is_passable(self, coordinates: Coordinates, world: 'World') -> bool:
+        """Cattle can only move through fields."""
         x, y = coordinates
         if x < 0 or y < 0 or x >= len(world.height_map[0]) or y >= len(world.height_map):
-            return False  # Out of bounds
+            return False
         
         height = world.height_map[y][x]
-        
         if world.get_biome_from_height(height) != 'field':
             return False
         
-        # Check if any settlement occupies this tile
-        for entity in world.entities if hasattr(world, 'entities') else []:
+        # Avoid settlements
+        for entity in world.entities:
             if isinstance(entity, Settlement) and entity.occupies(coordinates):
                 return False
         
+        # Avoid scorched land
+        if self._is_scorched(coordinates, world):
+            return False
+        
         return True
     
-    def choose_target(self, world) -> None:
-        """Choose a destination: near nearby village if within attraction radius, else wander randomly."""
-        # Check if there's a village within attraction radius
-        nearby_settlement = None
-        for entity in world.entities if hasattr(world, 'entities') else []:
-            if entity.__class__.__name__ == 'Village':
-                distance = self.get_distance(entity.coordinates)
-                if distance <= VILLAGE_ATTRACTION_RADIUS:
-                    nearby_settlement = entity
-                    break
+    def _is_scorched(self, coordinates: Coordinates, world: 'World') -> bool:
+        """Check if coordinates are in scorched dragon territory."""
+        for entity in world.entities:
+            if entity.__class__.__name__ == 'Domain':
+                if hasattr(entity, 'is_scorched') and entity.is_scorched:
+                    if entity.get_distance(coordinates) <= 10:  # Scorched radius
+                        return True
+        return False
+    
+    def _find_nearby_village(self, world: 'World') -> Optional[Settlement]:
+        """Find a village within attraction radius."""
+        for entity in world.entities:
+            if entity.__class__.__name__ == 'Village' and entity.is_alive:
+                if self.get_distance(entity.coordinates) <= VILLAGE_ATTRACTION_RADIUS:
+                    return entity
+        return None
+    
+    def build_schedule(self, world: 'World') -> None:
+        """Build simple daily schedule - just wander."""
+        self.schedule = []
+        self.current_action = None
+        self.fleeing_from = None
         
-        # Try multiple times to find a valid destination
-        for _ in range(DESTINATION_ATTEMPTS):
-            if nearby_settlement:
-                # Stay within min-max distance of settlement
-                settlement_x, settlement_y = nearby_settlement.coordinates
-                dx = random.randint(SETTLEMENT_MIN_DISTANCE, SETTLEMENT_MAX_DISTANCE) * random.choice([-1, 1])
-                dy = random.randint(SETTLEMENT_MIN_DISTANCE, SETTLEMENT_MAX_DISTANCE) * random.choice([-1, 1])
-                target = (settlement_x + dx, settlement_y + dy)
+        # Cattle just wander throughout the day
+        self.add_scheduled_action(7, ActionType.WANDER)
+        self.add_scheduled_action(11, ActionType.WANDER)
+        self.add_scheduled_action(15, ActionType.WANDER)
+    
+    def on_hour(self, world: 'World', hour: int) -> None:
+        """Process hourly updates."""
+        if self.is_sleeping:
+            return
+        
+        action = self.get_action_for_hour(hour)
+        if action:
+            self.start_action(action)
+            self._choose_wander_destination(world)
+    
+    def _choose_wander_destination(self, world: 'World') -> None:
+        """Choose a destination, gravitating toward villages."""
+        village = self._find_nearby_village(world)
+        
+        for _ in range(10):  # Try 10 times to find valid destination
+            if village:
+                # Stay within range of village
+                vx, vy = village.coordinates
+                dx = randint(-WANDER_RANGE, WANDER_RANGE)
+                dy = randint(-WANDER_RANGE, WANDER_RANGE)
+                target = (vx + dx, vy + dy)
             else:
-                # Wander randomly
-                current_x, current_y = self.coordinates
-                dx = random.randint(-WANDER_RANGE, WANDER_RANGE)
-                dy = random.randint(-WANDER_RANGE, WANDER_RANGE)
-                target = (current_x + dx, current_y + dy)
+                # Random wander
+                cx, cy = self.coordinates
+                dx = randint(-WANDER_RANGE, WANDER_RANGE)
+                dy = randint(-WANDER_RANGE, WANDER_RANGE)
+                target = (cx + dx, cy + dy)
+            
+            # Clamp to world bounds
+            x = max(0, min(world.WIDTH - 1, target[0]))
+            y = max(0, min(world.HEIGHT - 1, target[1]))
+            target = (x, y)
             
             if self.is_passable(target, world):
-                self.destination = target
-                self.path = self.find_path(target, world)
-                self.state = "moving"
+                self.set_destination(target, world)
                 return
         
-        # Failed to find valid destination, stay put
-        self.destination = None
-        self.path = []
+        # Couldn't find valid destination, stay put
+        self.complete_current_action()
     
-    def approach_target(self, world) -> None:
-        """Move one step along the path to the destination."""
-        # Recalculate path if we don't have one
-        if not self.path and self.destination:
-            self.path = self.find_path(self.destination, world)
-        
-        # Move along the path
-        if self.path:
-            next_step = self.path.pop(0)
-            self.move_to(next_step)
+    def on_arrival(self, world: 'World') -> None:
+        """Called when arriving at destination - just complete action."""
+        self.complete_current_action()
+        self.grazing = True
     
-    def update(self, world) -> None:
-        super().update(world)
+    def check_for_encounters(self, world: 'World') -> Optional[Mobile]:
+        """Check for dragons (fear)."""
+        nearby = self.get_nearby_entities(world, FEAR_RADIUS)
         
-        # When arrived or just created, pick a new destination
-        if self.state in ("arrived", "created"):
-            self.choose_target(world)
+        for entity in nearby:
+            if entity.__class__.__name__ in ('Dragon', 'DragonBase'):
+                return entity
+        
+        return None
+    
+    def react_to_encounter(self, world: 'World', other: 'Mobile') -> Optional[ScheduledAction]:
+        """React to dragons by fleeing."""
+        if other.__class__.__name__ in ('Dragon', 'DragonBase'):
+            self.fleeing_from = other
+            self.grazing = False
+            self.flee_from(other, world)
+            return ScheduledAction(
+                hour=world.time.current_hour if hasattr(world, 'time') else 0,
+                action_type=ActionType.FLEE,
+                priority=100
+            )
+        
+        return None
+    
+    def serialize(self) -> Dict[str, Any]:
+        """Serialize for JSON output."""
+        data = super().serialize()
+        data.update({
+            "grazing": self.grazing,
+            "fleeing": self.fleeing_from is not None,
+        })
+        return data
