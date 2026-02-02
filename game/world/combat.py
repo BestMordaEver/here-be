@@ -42,8 +42,8 @@ def dragon_attacks_settlement(dragon, settlement, world: 'World') -> None:
     settlement.hurt(world, 1, 'dragon attack')
     settlement.days_since_attack = 0  # Trigger mourning
     
-    # Some types reduce settlement to 1 HP
-    if hasattr(dragon, '_type_config') and dragon._type_config.instant_camp_kill:
+    # Brute type reduces settlement to 1 HP
+    if dragon.dragon_type == 'brute':
         if settlement.life > 1:
             settlement.hurt(world, settlement.life - 1, 'dragon crush')
     
@@ -87,8 +87,8 @@ def dragon_attacks_hero(dragon, hero, world: 'World') -> None:
 
 
 def dragon_attacks_camp(dragon, camp, world: 'World') -> None:
-    """Dragon destroys a camp. Some types destroy camps instantly."""
-    if hasattr(dragon, '_type_config') and dragon._type_config.instant_camp_kill:
+    """Dragon destroys a camp. Brute type destroys camps instantly."""
+    if dragon.dragon_type == 'brute':
         camp.die(world, "dragon")
         dragon.think("The camp is obliterated.")
     else:
@@ -160,11 +160,9 @@ def hero_attacks_dragon(hero, dragon, world: 'World') -> None:
 
 
 def _party_attacks_dragon(party: list, dragon, world: 'World') -> None:
-    """Full party kills dragon, but one hero must die (two for some types)."""
-    # Determine casualties - use config flag if available
-    deaths_required = 1
-    if hasattr(dragon, '_type_config') and dragon._type_config.extra_hero_casualty:
-        deaths_required = 2
+    """Full party kills dragon, but one hero must die (two for blade type)."""
+    # Determine casualties - blade type kills two heroes
+    deaths_required = 2 if dragon.dragon_type == 'blade' else 1
     
     casualties = []
     for _ in range(min(deaths_required, len(party))):

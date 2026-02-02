@@ -6,8 +6,6 @@ from random import randint, choice, random
 from typing import TYPE_CHECKING, Dict, Any, List, Optional
 
 from .base import Coordinates, Mobile, Named, Thinking, Mortal, Scheduled, ActionType, ScheduledAction, ActionState, Aging
-from .dragons.types import get_dragon_type
-from .dragons.domains import get_dragon_domain
 
 if TYPE_CHECKING:
     from game.world import World
@@ -55,7 +53,7 @@ class DragonPronouns:
         return cls()
 
 
-class DragonBase(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
+class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
     """Base dragon class with mood-based scheduling."""
 
     def __init__(
@@ -65,18 +63,45 @@ class DragonBase(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         coordinates: Coordinates,
         pronouns: str = None,
     ):
-        # Get type and domain configs from lookup tables
-        self.dragon_type, type_config = get_dragon_type(properties)
-        self.domain_type, domain_config = get_dragon_domain(properties)
+        # Determine dragon type from properties
+        if 'serpent' in properties:
+            self.dragon_type = 'serpent'
+            char = 'Ȿ'
+            base_rotation = 270
+        elif 'blade' in properties:
+            self.dragon_type = 'blade'
+            char = '%'
+            base_rotation = 315
+        elif 'druid' in properties:
+            self.dragon_type = 'druid'
+            char = '₷'
+            base_rotation = 315
+        elif 'midas' in properties:
+            self.dragon_type = 'midas'
+            char = 'ꬸ'
+            base_rotation = 270
+        elif 'fragile' in properties:
+            self.dragon_type = 'fragile'
+            char = 'ϗ'
+            base_rotation = 235
+        else:  # brute is default
+            self.dragon_type = 'brute'
+            char = 'Ȣ'
+            base_rotation = 90
         
-        # Store configs for behavior lookups
-        self._type_config = type_config
-        self._domain_config = domain_config
-        
-        # Visual properties from config
-        char = type_config.char
-        base_rotation = type_config.base_rotation
-        color = domain_config.color
+        # Determine domain from properties
+        if 'aquatic' in properties:
+            self.domain_type = 'aquatic'
+            color = '#004080'
+        elif 'mountain' in properties:
+            self.domain_type = 'mountain'
+            color = '#808080'
+        elif 'verdant' in properties:
+            self.domain_type = 'verdant'
+            color = '#008000'
+        elif 'scorched' in properties:
+            self.domain_type = 'scorched'
+            color = '#800000'
 
         # Initialize base classes
         Mobile.__init__(self, color, char, coordinates, loiter=0)  # Dragons move every cycle
@@ -323,7 +348,8 @@ class DragonBase(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         if action.action_type == ActionType.TEND_HOARD:
             # Instant - generate blessing
             self.blessings += 1
-            self.blessings = min(self.blessings, self._type_config.max_blessings)
+            max_blessings = 10 if self.dragon_type == 'midas' else 5
+            self.blessings = min(self.blessings, max_blessings)
             self.think("I tend to my hoard, feeling it grow.")
             self.complete_current_action()
             
@@ -409,11 +435,11 @@ class DragonBase(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         """Process movement using Bresenham-style approach."""
         if self.state != "moving" or not self.destination:
             return
-        
-        # Check diagonal debt (unless type ignores it)
-        if not self._type_config.ignores_diagonal_debt and self.should_skip_movement():
+
+        # Check diagonal debt (unless blade type ignores it)
+        if self.dragon_type != 'blade' and self.should_skip_movement():
             return
-        
+
         self._bresenham_move(world)
         
         # Check if arrived
@@ -462,10 +488,10 @@ class DragonBase(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             heading = degrees(atan2(dy, dx))
             self.rotation = heading - self.base_rotation
         
-        # Move (some types ignore diagonal debt)
+        # Move (blade type ignores diagonal debt)
         self.move_to(
             (self.coordinates[0] + dx, self.coordinates[1] + dy),
-            forego_debt=self._type_config.ignores_diagonal_debt
+            forego_debt=self.dragon_type == 'blade'
         )
     
     def _on_movement_complete(self, world: 'World') -> None:
@@ -497,8 +523,8 @@ class DragonBase(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         self.current_target = None
     
     def _complete_tending(self, world: 'World') -> None:
-        """Complete tending a spirit. Some types tend all spirits in range."""
-        if self._type_config.tends_area:
+        """Complete tending a spirit. Druid type tends all spirits in range."""
+        if self.dragon_type == 'druid':
             # Area tenders bless all spirits within radius
             count = 0
             for entity in world.entities:
@@ -618,13 +644,3 @@ class DragonBase(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             "schedule": self.get_schedule_summary(),
         })
         return data
-
-
-def Dragon(
-    name: str, 
-    properties: List[str], 
-    coordinates: Coordinates,
-    pronouns: str = None
-) -> DragonBase:
-    """Factory function to create a dragon."""
-    return DragonBase(name, properties, coordinates, pronouns)
