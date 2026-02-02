@@ -91,7 +91,7 @@ class Scheduled:
         self._interrupted_action: Optional[ScheduledAction] = None  # Action we were doing before interruption
         self.is_sleeping = False
     
-    def build_schedule(self, world: 'World') -> None:
+    def build_schedule(self) -> None:
         """
         Build the day's schedule based on mood/intent.
         Override in subclasses for entity-specific scheduling.
@@ -189,26 +189,26 @@ class Scheduled:
         self.current_action = None
         self._interrupted_action = None
     
-    def on_dawn(self, world: 'World') -> None:
+    def on_dawn(self) -> None:
         """Called at dawn - wake up and build schedule."""
         self.is_sleeping = False
-        self.build_schedule(world)
+        self.build_schedule()
     
-    def on_dusk(self, world: 'World') -> None:
+    def on_dusk(self) -> None:
         """Called at dusk - prepare for night."""
         pass  # Override in subclasses (e.g., return home)
     
-    def on_night(self, world: 'World') -> None:
+    def on_night(self) -> None:
         """Called when night begins - go to sleep."""
         self.is_sleeping = True
         self.clear_schedule()
         self.add_scheduled_action(
-            hour=world.time.current_hour,
+            hour=self.world.time.current_hour,
             action_type=ActionType.SLEEP,
             priority=100
         )
     
-    def on_hour(self, world: 'World', hour: int) -> None:
+    def on_hour(self, hour: int) -> None:
         """
         Called each hour. Check for scheduled actions and execute.
         Override in subclasses for custom hourly behavior.
@@ -221,7 +221,7 @@ class Scheduled:
         if action:
             self.start_action(action)
     
-    def check_for_encounters(self, world: 'World') -> Optional['Scheduled']:
+    def check_for_encounters(self) -> Optional['Scheduled']:
         """
         Check for nearby entities that trigger encounters.
         Override in subclasses for entity-specific encounter logic.
@@ -231,7 +231,7 @@ class Scheduled:
         """
         return None
     
-    def react_to_encounter(self, world: 'World', other: 'Scheduled') -> Optional[ScheduledAction]:
+    def react_to_encounter(self, other: 'Scheduled') -> Optional[ScheduledAction]:
         """
         Determine reaction to an encounter.
         Override in subclasses for entity-specific reactions.

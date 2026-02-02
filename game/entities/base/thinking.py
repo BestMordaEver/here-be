@@ -70,16 +70,16 @@ class Thinking:
         if len(self.thoughts) > MAX_THOUGHTS:
             self.thoughts.pop(0)
     
-    def generate_thought(self, world) -> None:
+    def generate_thought(self) -> None:
         """Generate a thought based on current state and intent."""
         # Only think occasionally (based on game hours)
-        if hasattr(world, 'day_night_cycle'):
-            current_time = world.day_night_cycle.get_current_time()
-            total_hours = current_time.day * 24 + current_time.hour
-            if total_hours - self._last_thought_hour < self._next_thought_interval:
-                return
-            self._last_thought_hour = total_hours
-            self._next_thought_interval = random.randint(THOUGHT_INTERVAL_HOURS_MIN, THOUGHT_INTERVAL_HOURS_MAX)
+
+        current_time = self.world.time.get_current_time()
+        total_hours = current_time.day * 24 + current_time.hour
+        if total_hours - self._last_thought_hour < self._next_thought_interval:
+            return
+        self._last_thought_hour = total_hours
+        self._next_thought_interval = random.randint(THOUGHT_INTERVAL_HOURS_MIN, THOUGHT_INTERVAL_HOURS_MAX)
         
         thought = None
         

@@ -1,6 +1,8 @@
 """Base entity class for all game entities."""
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from game.world import World
 
 Coordinates = Tuple[int, int]
 
@@ -10,17 +12,19 @@ class Entity:
 
     def __init__(
         self,
+        world: 'World',
         color: str,
         character: str,
         coordinates: Coordinates,
     ):
+        self.world = world
         self.color = color
         self.character = character
         self.coordinates = coordinates
         self.is_alive = True
         self.is_dead = False
-    
-    def update(self, world) -> None:
+        
+    def update(self) -> None:
         raise NotImplementedError("Subclasses must implement update()")
     
     def get_distance(self, destination: Coordinates) -> float:
@@ -52,7 +56,7 @@ class Entity:
                     surrounding.append((x + dx, y + dy))
         return surrounding
 
-    def die(self, world, reason) -> None:
+    def die(self, reason) -> None:
         """Handle entity death."""
         self.is_dead = True
         self.is_alive = False

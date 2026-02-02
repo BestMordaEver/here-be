@@ -15,23 +15,26 @@ app = Flask(__name__, template_folder='web/templates', static_folder='web/static
 world = World()
 app.world = world  # Make world accessible to blueprints
 
-dragon1 = Dragon("Jielle", ["serpent", "aquatic"], (180, 180))
-dragon2 = Dragon("Thrax", ["brute", "mountain"], (20, 200))
-dragon3 = Dragon("Sylph", ["blade", "verdant"], (10, 30))
-dragon4 = Dragon("Ember", ["druid", "scorched"], (10, 50))
-dragon5 = Dragon("Aurelia", ["midas", "mountain"], (25, 25))
+dragon1 = Dragon(world, "Jielle", ["serpent", "aquatic"], (180, 180))
+dragon2 = Dragon(world, "Thrax", ["brute", "mountain"], (20, 200))
+dragon3 = Dragon(world, "Sylph", ["blade", "verdant"], (10, 30))
+dragon4 = Dragon(world, "Ember", ["druid", "scorched"], (10, 50))
+dragon5 = Dragon(world, "Aurelia", ["midas", "mountain"], (25, 25))
+dragon6 = Dragon(world, "Vitres", ["fragile", "mountain"], (25, 25))
 
 dragon1.state = "arrived"
 dragon2.state = "arrived"
 dragon3.state = "arrived"
 dragon4.state = "arrived"
 dragon5.state = "arrived"
+dragon6.state = "arrived"
 
 world.add_entity(dragon1)
 world.add_entity(dragon2)
 world.add_entity(dragon3)
 world.add_entity(dragon4)
 world.add_entity(dragon5)
+world.add_entity(dragon6)
 
 world.start_update_thread()
 

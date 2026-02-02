@@ -73,7 +73,7 @@ class World:
         
         # If it's daytime and entity is Scheduled, build its schedule
         if hasattr(entity, 'build_schedule') and self.time.is_active_hours():
-            entity.build_schedule(self)
+            entity.build_schedule()
     
     def remove_entity(self, entity) -> None:
         """Remove an entity from the world."""
@@ -106,25 +106,25 @@ class World:
         """Trigger dawn event for all scheduled entities."""
         for entity in self.entities:
             if hasattr(entity, 'on_dawn'):
-                entity.on_dawn(self)
+                entity.on_dawn()
     
     def _trigger_dusk(self) -> None:
         """Trigger dusk event for all scheduled entities."""
         for entity in self.entities:
             if hasattr(entity, 'on_dusk'):
-                entity.on_dusk(self)
+                entity.on_dusk()
     
     def _trigger_night(self) -> None:
         """Trigger night event for all scheduled entities."""
         for entity in self.entities:
             if hasattr(entity, 'on_night'):
-                entity.on_night(self)
+                entity.on_night()
     
     def _trigger_hour(self, hour: int) -> None:
         """Trigger hourly event for all scheduled entities."""
         for entity in list(self.entities):
             if hasattr(entity, 'on_hour'):
-                entity.on_hour(self, hour)
+                entity.on_hour(hour)
     
     def _process_hour(self, game_time: GameTime) -> None:
         """Process a single hour of game time."""
@@ -165,7 +165,7 @@ class World:
         # Iterate over a copy since entities may be removed during update
         for entity in list(self.entities):
             if hasattr(entity, 'update_movement'):
-                entity.update_movement(self)
+                entity.update_movement()
     
     def _check_encounters(self) -> None:
         """Check for encounters between moving entities."""
@@ -182,7 +182,7 @@ class World:
         # Check each pair for encounters
         checked_pairs = set()
         for entity in moving_entities:
-            encountered = entity.check_for_encounters(self)
+            encountered = entity.check_for_encounters()
             if encountered and (id(entity), id(encountered)) not in checked_pairs:
                 checked_pairs.add((id(entity), id(encountered)))
                 checked_pairs.add((id(encountered), id(entity)))
@@ -197,9 +197,9 @@ class World:
         reaction2 = None
         
         if hasattr(entity1, 'react_to_encounter'):
-            reaction1 = entity1.react_to_encounter(self, entity2)
+            reaction1 = entity1.react_to_encounter(entity2)
         if hasattr(entity2, 'react_to_encounter'):
-            reaction2 = entity2.react_to_encounter(self, entity1)
+            reaction2 = entity2.react_to_encounter(entity1)
         
         # Apply reactions
         if reaction1 and hasattr(entity1, 'interrupt_for_encounter'):

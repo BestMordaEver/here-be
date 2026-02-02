@@ -12,25 +12,25 @@ from .base.expansion import WOOD_CAMP_RANGE, ORE_CAMP_RANGE
 class Camp(Settlement, Mortal):
     """2x2 worker camp made of brown tents."""
     
-    def __init__(self, coordinates: Coordinates, spirit_coordinates: Coordinates, home: 'Settlement'):
-        super().__init__(coordinates, life=2)
+    def __init__(self, world: 'World', coordinates: Coordinates, spirit_coordinates: Coordinates, home: 'Settlement'):
+        super().__init__(world, coordinates, life=2)
         self.nearby_spirits: List['Spirit'] | None = None  # Cached list of nearby spirits (lazy init)
         self.spirit_coordinates = spirit_coordinates
         self.home = home
         self._last_blessing_day = -1
     
-    def die(self, world: 'World', cause: str) -> None:
+    def die(self, cause: str) -> None:
         """Handle camp death."""
         # Drop blessings
         if self.blessings > 0:
             from .blessing import drop_blessing
-            drop_blessing(world, self.coordinates, self.blessings)
+            drop_blessing(self.world, self.coordinates, self.blessings)
             self.blessings = 0
         
-        super().die(world, cause)
+        super().die(cause)
         
         # Free up the occupied spirit
-        entities = world.get_entities_at(self.spirit_coordinates)
+        entities = self.world.get_entities_at(self.spirit_coordinates)
         for entity in entities:
             if entity.__class__.__name__ == 'Spirit':
                 entity.is_occupied = False
@@ -59,21 +59,21 @@ class Camp(Settlement, Mortal):
                 tiles.append(((x + dx, y + dy), "Λ", "#8B4513"))
         return tiles
     
-    def on_dawn(self, world: 'World') -> None:
+    def on_dawn(self) -> None:
         """Try to send blessings to parent, then extract from spirits."""
         if self.is_dead:
             return
         
-        current_day = world.day_night_cycle.get_current_time().day
+        current_day = self.world.time.get_current_time().day
         
         # Send blessing to parent settlement if we have one
         if self.blessings > 0 and self.home and self.home.is_alive:
-            self._send_blessing_to_parent(world)
+            self._send_blessing_to_parent()
         
         # Initialize nearby spirits cache if needed
         if self.nearby_spirits is None:
             self.nearby_spirits = []
-            for entity in world.entities:
+            for entity in self.world.entities:
                 if entity.__class__.__name__ == 'Spirit':
                     if entity.type == 'forest' and self.get_distance(entity.coordinates) <= WOOD_CAMP_RANGE:
                         self.nearby_spirits.append(entity)
@@ -91,12 +91,13 @@ class Camp(Settlement, Mortal):
                 self._last_blessing_day = current_day
                 return  # Only one blessing per day
     
-    def _send_blessing_to_parent(self, world: 'World') -> None:
+    def _send_blessing_to_parent(self) -> None:
         """Send a caravan with blessing to parent settlement."""
         from .caravan import Caravan, CaravanMission
         
         # Create caravan to deliver blessing
         caravan = Caravan(
+            self.world,
             coordinates=self.coordinates,
             home=self.home,
             destination=self.home,
@@ -104,8 +105,8 @@ class Camp(Settlement, Mortal):
         )
         caravan.blessing = True
         self.blessings -= 1
-        world.add_entity(caravan)
+        self.world.add_entity(caravan)
     
-    def update(self, world: 'World') -> None:
+    def update(self) -> None:
         """Camps don't need regular updates beyond dawn."""
         pass

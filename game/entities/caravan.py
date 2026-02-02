@@ -28,13 +28,14 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
 
     def __init__(
         self,
+        world: 'World',
         coordinates: Coordinates,
         home: 'Village | City',
         destination: 'Settlement | Coordinates',
         mission: CaravanMission,
         target_spirit: 'Spirit' = None,  # For settle_camp mission
     ):
-        Mobile.__init__(self, "#2b1c00", '@', coordinates, loiter=4)  # Caravans skip 4 cycles
+        Mobile.__init__(self, world, "#2b1c00", '@', coordinates, loiter=4)  # Caravans skip 4 cycles
         Thinking.__init__(self, intent=mission.value)
         Scheduled.__init__(self)
         
@@ -48,22 +49,22 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
         
         # Set initial destination
         if hasattr(destination, 'coordinates'):
-            self.set_destination(destination.coordinates, None)
+            self.set_destination(destination.coordinates)
         elif isinstance(destination, tuple):
-            self.set_destination(destination, None)
+            self.set_destination(destination)
     
-    def is_passable(self, coordinates: Coordinates, world: 'World') -> bool:
+    def is_passable(self, coordinates: Coordinates) -> bool:
         """Caravans can only move through fields."""
         x, y = coordinates
-        if x < 0 or y < 0 or x >= len(world.height_map[0]) or y >= len(world.height_map):
+        if x < 0 or y < 0 or x >= len(self.world.height_map[0]) or y >= len(self.world.height_map):
             return False
         
-        height = world.height_map[y][x]
-        if world.get_biome_from_height(height) != 'field':
+        height = self.world.height_map[y][x]
+        if self.world.get_biome_from_height(height) != 'field':
             return False
         
         # Can't move through settlements (except destination)
-        for entity in world.entities:
+        for entity in self.world.entities:
             if isinstance(entity, Settlement) and entity.occupies(coordinates):
                 # Allow moving to destination settlement
                 if entity == self.destination:
@@ -72,7 +73,7 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
         
         return True
     
-    def build_schedule(self, world: 'World') -> None:
+    def build_schedule(self) -> None:
         """Caravans are mission-driven, not day-scheduled."""
         # Caravans don't use the normal scheduling system
         # They just continue their mission
@@ -84,32 +85,32 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
             target = self.destination
             if hasattr(target, 'coordinates'):
                 target = target.coordinates
-            self.set_destination(target, world)
+            self.set_destination(target)
     
-    def on_hour(self, world: 'World', hour: int) -> None:
+    def on_hour(self, hour: int) -> None:
         """Caravans don't have hourly schedules."""
         pass
     
-    def update_movement(self, world: 'World') -> None:
+    def update_movement(self) -> None:
         """Process movement step."""
         # Check if destination still valid
         if hasattr(self.destination, 'is_alive') and not self.destination.is_alive:
             # Destination died, flee to nearest settlement
-            self._flee_to_settlement(world)
+            self._flee_to_settlement()
             return
         
         # Normal movement
-        super().update_movement(world)
+        super().update_movement()
         
         # Try to pick up a blessing if we don't have one
         if not self.blessing:
-            self._try_pickup_blessing(world)
+            self._try_pickup_blessing()
     
-    def _try_pickup_blessing(self, world: 'World') -> None:
+    def _try_pickup_blessing(self) -> None:
         """Pick up a dropped blessing at current location (caravans carry only 1)."""
         from .blessing import Blessing
         
-        for entity in world.entities:
+        for entity in self.world.entities:
             if isinstance(entity, Blessing) and entity.coordinates == self.coordinates:
                 taken = entity.take(1)
                 if taken > 0:
@@ -117,25 +118,25 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
                     self.think("Found a blessing on the road!")
                 break
     
-    def on_arrival(self, world: 'World') -> None:
+    def on_arrival(self) -> None:
         """Handle arrival at destination."""
         if self.mission == CaravanMission.TRADE:
-            self._complete_trade(world)
+            self._complete_trade()
         elif self.mission == CaravanMission.SETTLE_CAMP:
-            self._complete_settle_camp(world)
+            self._complete_settle_camp()
         elif self.mission == CaravanMission.SETTLE_VILLAGE:
-            self._complete_settle_village(world)
+            self._complete_settle_village()
         elif self.mission == CaravanMission.RETRIEVE_BLESSING:
-            self._complete_retrieve_blessing(world)
+            self._complete_retrieve_blessing()
         elif self.mission == CaravanMission.DELIVER_BLESSING:
-            self._complete_deliver_blessing(world)
+            self._complete_deliver_blessing()
     
-    def _complete_trade(self, world: 'World') -> None:
+    def _complete_trade(self) -> None:
         """Complete a trade mission."""
         if self.returning:
             # Arrived home, mission complete
             self.think("Home at last.")
-            self.die(world, "success")
+            self.die("success")
             return
         
         # Exchange gossip (placeholder for future implementation)
@@ -145,44 +146,44 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
         self.returning = True
         if self.home and self.home.is_alive:
             self.destination = self.home
-            self.set_destination(self.home.coordinates, world)
+            self.set_destination(self.home.coordinates)
             self.state = "moving"
         else:
             # Home is gone, wander
-            self.die(world, "homeless")
+            self.die("homeless")
     
-    def _complete_settle_camp(self, world: 'World') -> None:
+    def _complete_settle_camp(self) -> None:
         """Create a camp at destination."""
         from . import Camp
         
         spirit_coords = self.target_spirit.coordinates if self.target_spirit else self.coordinates
         
-        camp = Camp(self.coordinates, spirit_coords, self.home)
+        camp = Camp(self.world, self.coordinates, spirit_coords, self.home)
         
         # Track camp in home's subsidiary list
         if hasattr(self.home, 'subsidiary_camps'):
             self.home.subsidiary_camps.append(camp)
         
-        world.add_entity(camp)
+        self.world.add_entity(camp)
         self.think("A new camp is established!")
-        self.die(world, "success")
+        self.die("success")
     
-    def _complete_settle_village(self, world: 'World') -> None:
+    def _complete_settle_village(self) -> None:
         """Create a village at destination."""
         from . import Village
         from game.world import generate_village_name
         
-        village = Village(generate_village_name(), self.coordinates)
+        village = Village(self.world, generate_village_name(), self.coordinates)
         
         # Track village in home's subsidiary list
         if hasattr(self.home, 'subsidiary_villages'):
             self.home.subsidiary_villages.append(village)
         
-        world.add_entity(village)
+        self.world.add_entity(village)
         self.think("A new village rises!")
-        self.die(world, "success")
+        self.die("success")
     
-    def _complete_retrieve_blessing(self, world: 'World') -> None:
+    def _complete_retrieve_blessing(self) -> None:
         """Retrieve blessing from village and return home."""
         if self.returning:
             # Deliver blessing to home
@@ -190,7 +191,7 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
                 if hasattr(self.home, 'blessings'):
                     self.home.blessings += 1
                 self.think("Delivered the blessing.")
-            self.die(world, "success")
+            self.die("success")
             return
         
         # Get blessing from destination
@@ -203,26 +204,26 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
         self.returning = True
         if self.home and self.home.is_alive:
             self.destination = self.home
-            self.set_destination(self.home.coordinates, world)
+            self.set_destination(self.home.coordinates)
             self.state = "moving"
         else:
-            self.die(world, "homeless")
+            self.die("homeless")
     
-    def _complete_deliver_blessing(self, world: 'World') -> None:
+    def _complete_deliver_blessing(self) -> None:
         """Deliver blessing to parent settlement."""
         if self.blessing and self.destination and hasattr(self.destination, 'blessings'):
             self.destination.blessings += 1
             self.blessing = False
             self.think("Blessing delivered!")
         
-        self.die(world, "success")
+        self.die("success")
     
-    def _flee_to_settlement(self, world: 'World') -> None:
+    def _flee_to_settlement(self) -> None:
         """Flee to nearest safe settlement."""
         closest: Optional[Settlement] = None
         closest_distance = float('inf')
         
-        for entity in world.entities:
+        for entity in self.world.entities:
             if isinstance(entity, Settlement) and entity.is_alive:
                 distance = self.get_distance(entity.coordinates)
                 if distance < closest_distance:
@@ -231,16 +232,16 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
         
         if closest:
             self.destination = closest
-            self.set_destination(closest.coordinates, world)
+            self.set_destination(closest.coordinates)
             self.mission = CaravanMission.TRADE  # Just get to safety
             self.returning = True
             self.think("Must flee to safety!")
         else:
-            self.die(world, "no refuge")
+            self.die("no refuge")
     
-    def check_for_encounters(self, world: 'World') -> Optional[Mobile]:
+    def check_for_encounters(self) -> Optional[Mobile]:
         """Check for threats."""
-        nearby = self.get_nearby_entities(world, FEAR_RADIUS)
+        nearby = self.get_nearby_entities(FEAR_RADIUS)
         
         for entity in nearby:
             if entity.__class__.__name__ in ('Dragon', 'DragonBase', 'Bandit'):
@@ -248,14 +249,14 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
         
         return None
     
-    def react_to_encounter(self, world: 'World', other: 'Mobile') -> Optional[ScheduledAction]:
+    def react_to_encounter(self, other: 'Mobile') -> Optional[ScheduledAction]:
         """React to threats by fleeing."""
         if other.__class__.__name__ in ('Dragon', 'DragonBase'):
             self.fleeing_from = other
-            self._flee_to_settlement(world)
+            self._flee_to_settlement()
             self.think("A dragon! We must flee!")
             return ScheduledAction(
-                hour=world.time.current_hour if hasattr(world, 'time') else 0,
+                hour=self.world.time.current_hour if hasattr(self.world, 'time') else 0,
                 action_type=ActionType.FLEE,
                 priority=100
             )
@@ -267,15 +268,15 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
         
         return None
     
-    def die(self, world: 'World', reason: str) -> None:
+    def die(self, reason: str) -> None:
         """Handle caravan death."""
         # Drop blessing if killed (not if mission completed successfully)
         if self.blessing and reason != "success":
             from .blessing import drop_blessing
-            drop_blessing(world, self.coordinates, 1)
+            drop_blessing(self.world, self.coordinates, 1)
             self.blessing = False
         
-        super().die(world, reason)
+        super().die(reason)
         
         # Remove from home's tracking
         if self.home and hasattr(self.home, 'subsidiary_camps'):

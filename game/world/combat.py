@@ -19,13 +19,13 @@ def dragon_attacks_caravan(dragon, caravan, world: 'World') -> None:
     
     # Unprotected - caravan destroyed
     dragon.think("The caravan is no more.")
-    caravan.die(world, "dragon attack")
+    caravan.die("dragon attack")
 
 
 def dragon_attacks_bandit(dragon, bandit, world: 'World') -> None:
     """Dragon kills a bandit."""
     dragon.think("Vermin crushed.")
-    bandit.die(world, "dragon attack")
+    bandit.die("dragon attack")
 
 
 def dragon_attacks_settlement(dragon, settlement, world: 'World') -> None:
@@ -75,7 +75,7 @@ def dragon_attacks_hero(dragon, hero, world: 'World') -> None:
         
         if not in_settlement:
             dragon.think("A weary hero falls.")
-            hero.die(world, "dragon attack")
+            hero.die("dragon attack")
             return
     
     # Fighting makes hero tired (unless vengeful)
@@ -89,7 +89,7 @@ def dragon_attacks_hero(dragon, hero, world: 'World') -> None:
 def dragon_attacks_camp(dragon, camp, world: 'World') -> None:
     """Dragon destroys a camp. Brute type destroys camps instantly."""
     if dragon.dragon_type == 'brute':
-        camp.die(world, "dragon")
+        camp.die("dragon")
         dragon.think("The camp is obliterated.")
     else:
         camp.hurt(world, 1, 'dragon attack')
@@ -105,7 +105,7 @@ def bandit_attacks_settlement(bandit, settlement, world: 'World') -> None:
                 # Vengeful hero kills bandit
                 from game.entities.hero import HeroMood
                 if entity.mood == HeroMood.VENGEFUL:
-                    bandit.die(world, "hero vengeance")
+                    bandit.die("hero vengeance")
                     entity.think("Justice served.")
                     return
                 # Other heroes drive off bandit
@@ -126,7 +126,7 @@ def bandit_attacks_caravan(bandit, caravan, world: 'World') -> None:
             if entity.get_distance(caravan.coordinates) <= 3:
                 from game.entities.hero import HeroMood
                 if entity.mood == HeroMood.VENGEFUL:
-                    bandit.die(world, "hero vengeance")
+                    bandit.die("hero vengeance")
                     entity.think("This one won't prey on travelers again.")
                     return
                 bandit.think("The caravan has a guardian!")
@@ -170,12 +170,12 @@ def _party_attacks_dragon(party: list, dragon, world: 'World') -> None:
         casualties.append(victim)
     
     # Kill dragon
-    dragon.die(world, "hero party")
+    dragon.die("hero party")
     
     # Kill casualties
     for victim in casualties:
         victim.think("For the realm...")
-        victim.die(world, "dragon fight")
+        victim.die("dragon fight")
         # Don't trigger vengeance for party members
         for hero in party:
             if hero.is_alive and victim in hero.acquaintances:
@@ -222,5 +222,5 @@ def resolve_attack(attacker, defender, world: 'World') -> None:
             # Vengeful heroes kill bandits
             from game.entities.hero import HeroMood
             if attacker.mood == HeroMood.VENGEFUL:
-                defender.die(world, "hero vengeance")
+                defender.die("hero vengeance")
                 attacker.think("One less scoundrel.")

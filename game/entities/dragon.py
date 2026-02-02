@@ -58,6 +58,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
 
     def __init__(
         self,
+        world: 'World',
         name: str,
         properties: List[str],
         coordinates: Coordinates,
@@ -84,7 +85,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             self.dragon_type = 'fragile'
             char = 'ϗ'
             base_rotation = 235
-        else:  # brute is default
+        elif 'brute' in properties:
             self.dragon_type = 'brute'
             char = 'Ȣ'
             base_rotation = 90
@@ -104,7 +105,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             color = '#800000'
 
         # Initialize base classes
-        Mobile.__init__(self, color, char, coordinates, loiter=0)  # Dragons move every cycle
+        Mobile.__init__(self, world, color, char, coordinates, loiter=0)  # Dragons move every cycle
         Named.__init__(self, name)
         Thinking.__init__(self)
         Scheduled.__init__(self)
@@ -131,7 +132,9 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         self.pronouns = DragonPronouns.from_string(pronouns)
         
         # State
-        self.domain: Optional['Domain'] = None
+        from . import Domain
+        self.domain = Domain(world, self.coordinates, self, self.is_scorched)
+        world.add_entity(self.domain)
         self.init_aging()
         self.mood = DragonMood.PENSIVE
         self.days_since_hungry = 0  # Track for hungry mood every 3 days
@@ -140,22 +143,13 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         # Current action tracking
         self.current_target = None  # Entity or coordinates being approached
     
-    def create_domain(self, world: 'World') -> None:
-        """Create the dragon's domain at spawn location."""
-        if self.domain is not None:
-            return
-        
-        from . import Domain
-        self.domain = Domain(self.coordinates, self, self.is_scorched)
-        world.add_entity(self.domain)
-    
-    def get_lifespan(self, world: 'World') -> int:
+    def get_lifespan(self) -> int:
         """Calculate lifespan based on active spires."""
-        spire_count = sum(1 for e in world.entities 
+        spire_count = sum(1 for e in self.world.entities 
                          if e.__class__.__name__ == 'Spire' and e.is_alive)
         return LIFESPAN_BASE_DAYS + (LIFESPAN_PER_SPIRE * spire_count)
     
-    def determine_mood(self, world: 'World') -> DragonMood:
+    def determine_mood(self) -> DragonMood:
         """Determine today's mood based on conditions."""
         # Hungry every 3 days (unless greed)
         if not self.is_greed and self.days_since_hungry >= 3:
@@ -184,63 +178,63 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         else:
             return DragonMood.PENSIVE
     
-    def build_schedule(self, world: 'World') -> None:
+    def build_schedule(self) -> None:
         """Build the day's schedule based on mood."""
         self.schedule = []
         self.current_action = None
         
         # Ensure domain exists
         if self.domain is None:
-            self.create_domain(world)
+            self.create_domain(self.world)
         
-        self.mood = self.determine_mood(world)
+        self.mood = self.determine_mood()
         self.days_since_hungry += 1
         
         if self.mood == DragonMood.DREARY:
-            self._schedule_dreary(world)
+            self._schedule_dreary()
         elif self.mood == DragonMood.INSPIRED:
-            self._schedule_inspired(world)
+            self._schedule_inspired()
         elif self.mood == DragonMood.PENSIVE:
-            self._schedule_pensive(world)
+            self._schedule_pensive()
         elif self.mood == DragonMood.HUNGRY:
-            self._schedule_hungry(world)
+            self._schedule_hungry()
         elif self.mood == DragonMood.COVETOUS:
-            self._schedule_covetous(world)
+            self._schedule_covetous()
         
         # Always end day by returning home
         self.add_scheduled_action(19, ActionType.RETURN_HOME, self.domain)
         
         self.think(f"Today I feel {self.mood.value}.")
     
-    def _schedule_dreary(self, world: 'World') -> None:
+    def _schedule_dreary(self) -> None:
         """Dreary: tend hoard, attack if not good."""
         self.add_scheduled_action(8, ActionType.TEND_HOARD)
         if not self.is_good:
-            target = self._find_human_target(world)
+            target = self._find_human_target()
             if target:
                 self.add_scheduled_action(12, ActionType.ATTACK, target)
         if self.is_evil:
-            settlement = self._find_settlement_target(world)
+            settlement = self._find_settlement_target()
             if settlement:
                 self.add_scheduled_action(15, ActionType.ATTACK, settlement)
     
-    def _schedule_inspired(self, world: 'World') -> None:
+    def _schedule_inspired(self) -> None:
         """Inspired: tend hoard, visit distant spirits."""
         self.add_scheduled_action(8, ActionType.TEND_HOARD)
-        spirits = self._find_distant_spirits(world, count=2)
+        spirits = self._find_distant_spirits(count=2)
         if len(spirits) >= 1:
             self.add_scheduled_action(10, ActionType.TEND_SPIRIT, spirits[0])
         if len(spirits) >= 2:
             self.add_scheduled_action(14, ActionType.TEND_SPIRIT, spirits[1])
     
-    def _schedule_pensive(self, world: 'World') -> None:
+    def _schedule_pensive(self) -> None:
         """Pensive: feed once, tend nearby spirit."""
         self.add_scheduled_action(9, ActionType.FEED)
-        spirit = self._find_nearby_spirit(world)
+        spirit = self._find_nearby_spirit()
         if spirit:
             self.add_scheduled_action(14, ActionType.TEND_SPIRIT, spirit)
     
-    def _schedule_hungry(self, world: 'World') -> None:
+    def _schedule_hungry(self) -> None:
         """Hungry: feed, rest, feed again."""
         if self.is_anthropophage:
             self.add_scheduled_action(8, ActionType.FEED)
@@ -250,7 +244,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             self.add_scheduled_action(12, ActionType.REST)
             self.add_scheduled_action(16, ActionType.FEED)
         if self.is_evil:
-            target = self._find_human_target(world)
+            target = self._find_human_target()
             if target:
                 for action in self.schedule:
                     if action.action_type == ActionType.REST:
@@ -258,18 +252,18 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
                         action.target = target
                         break
     
-    def _schedule_covetous(self, world: 'World') -> None:
+    def _schedule_covetous(self) -> None:
         """Covetous: attack settlement, steal blessing."""
-        settlement = self._find_settlement_with_blessing(world)
+        settlement = self._find_settlement_with_blessing()
         if not settlement:
-            settlement = self._find_settlement_target(world)
+            settlement = self._find_settlement_target()
         if settlement:
             self.add_scheduled_action(10, ActionType.ATTACK, settlement)
     
-    def _find_human_target(self, world: 'World') -> Optional[Any]:
+    def _find_human_target(self) -> Optional[Any]:
         """Find a human entity to attack."""
         humans = []
-        for entity in world.entities:
+        for entity in self.world.entities:
             if entity.__class__.__name__ in ('Hero', 'Bandit', 'Caravan'):
                 if entity.is_alive:
                     humans.append(entity)
@@ -277,10 +271,10 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             return choice(humans)
         return None
     
-    def _find_settlement_target(self, world: 'World') -> Optional[Any]:
+    def _find_settlement_target(self) -> Optional[Any]:
         """Find a settlement to attack."""
         settlements = []
-        for entity in world.entities:
+        for entity in self.world.entities:
             if entity.__class__.__name__ in ('Village', 'City', 'Camp'):
                 if entity.is_alive:
                     settlements.append(entity)
@@ -288,10 +282,10 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             return choice(settlements)
         return None
     
-    def _find_settlement_with_blessing(self, world: 'World') -> Optional[Any]:
+    def _find_settlement_with_blessing(self) -> Optional[Any]:
         """Find a settlement that has blessings to steal."""
         settlements = []
-        for entity in world.entities:
+        for entity in self.world.entities:
             if entity.__class__.__name__ in ('Village', 'City'):
                 if entity.is_alive and hasattr(entity, 'blessings') and entity.blessings > 0:
                     settlements.append(entity)
@@ -299,13 +293,13 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             return choice(settlements)
         return None
     
-    def _find_nearby_spirit(self, world: 'World') -> Optional['Spirit']:
+    def _find_nearby_spirit(self) -> Optional['Spirit']:
         """Find a spirit near the domain."""
         if not self.domain:
             return None
         
         spirits = []
-        for entity in world.entities:
+        for entity in self.world.entities:
             if entity.__class__.__name__ == 'Spirit' and entity.is_alive:
                 dist = self.domain.get_distance(entity.coordinates)
                 if dist <= 30:  # Within reasonable range
@@ -316,13 +310,13 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             return spirits[0][1]
         return None
     
-    def _find_distant_spirits(self, world: 'World', count: int = 2) -> List['Spirit']:
+    def _find_distant_spirits(self, count: int = 2) -> List['Spirit']:
         """Find distant spirits to visit."""
         if not self.domain:
             return []
         
         spirits = []
-        for entity in world.entities:
+        for entity in self.world.entities:
             if entity.__class__.__name__ == 'Spirit' and entity.is_alive:
                 dist = self.domain.get_distance(entity.coordinates)
                 if dist > 30:  # Far from domain
@@ -332,7 +326,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         spirits.sort(key=lambda x: x[0], reverse=True)
         return [s[1] for s in spirits[:count]]
     
-    def on_hour(self, world: 'World', hour: int) -> None:
+    def on_hour(self, hour: int) -> None:
         """Process hourly updates."""
         if self.is_sleeping:
             return
@@ -341,9 +335,9 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         action = self.get_action_for_hour(hour)
         if action:
             self.start_action(action)
-            self._execute_action_start(world, action)
+            self._execute_action_start(action)
     
-    def _execute_action_start(self, world: 'World', action: ScheduledAction) -> None:
+    def _execute_action_start(self, action: ScheduledAction) -> None:
         """Start executing a scheduled action."""
         if action.action_type == ActionType.TEND_HOARD:
             # Instant - generate blessing
@@ -355,11 +349,11 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             
         elif action.action_type == ActionType.FEED:
             # Find food based on diet and start moving toward it
-            self._start_feeding(world)
+            self._start_feeding()
             
         elif action.action_type == ActionType.TEND_SPIRIT:
             if action.target:
-                self.set_target_entity(action.target, world)
+                self.set_target_entity(action.target, self.world)
                 self.current_target = action.target
                 self.think(f"I shall visit the spirit.")
             else:
@@ -367,7 +361,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
                 
         elif action.action_type == ActionType.ATTACK:
             if action.target and hasattr(action.target, 'coordinates'):
-                self.set_target_entity(action.target, world)
+                self.set_target_entity(action.target, self.world)
                 self.current_target = action.target
                 self.think("Destruction awaits.")
             else:
@@ -375,7 +369,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
                 
         elif action.action_type == ActionType.RETURN_HOME:
             if self.domain:
-                self.set_destination(self.domain.coordinates, world)
+                self.set_destination(self.domain.coordinates, self.world)
                 self.think("Time to return to my domain.")
             else:
                 self.complete_current_action()
@@ -384,7 +378,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             self.think("I rest and gather my strength.")
             self.complete_current_action()
     
-    def _start_feeding(self, world: 'World') -> None:
+    def _start_feeding(self) -> None:
         """Start feeding behavior based on diet."""
         if self.is_greed:
             # Greed dragons don't feed - tend hoard instead
@@ -397,41 +391,41 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         target = None
         
         if self.is_carnivore:
-            target = self._find_cattle(world)
+            target = self._find_cattle()
         elif self.is_herbivore:
-            target = self._find_grazing_spot(world)
+            target = self._find_grazing_spot()
         elif self.is_anthropophage:
-            target = self._find_human_target(world)
+            target = self._find_human_target()
         
         if target:
             if isinstance(target, tuple):
-                self.set_destination(target, world)
+                self.set_destination(target, self.world)
             else:
-                self.set_target_entity(target, world)
+                self.set_target_entity(target, self.world)
             self.current_target = target
             self.think("Hunger drives me.")
         else:
             self.think("No prey to be found.")
             self.complete_current_action()
     
-    def _find_cattle(self, world: 'World') -> Optional[Any]:
+    def _find_cattle(self) -> Optional[Any]:
         """Find cattle to hunt."""
-        for entity in world.entities:
+        for entity in self.world.entities:
             if entity.__class__.__name__ == 'Cattle' and entity.is_alive:
                 if self.get_distance(entity.coordinates) <= 50:
                     return entity
         return None
     
-    def _find_grazing_spot(self, world: 'World') -> Optional[Coordinates]:
+    def _find_grazing_spot(self) -> Optional[Coordinates]:
         """Find a plains tile to graze."""
         for _ in range(20):
-            x = randint(0, world.WIDTH - 1)
-            y = randint(0, world.HEIGHT - 1)
-            if world.get_biome_from_height(world.height_map[y][x]) == 'field':
+            x = randint(0, self.world.WIDTH - 1)
+            y = randint(0, self.world.HEIGHT - 1)
+            if self.world.get_biome_from_height(self.world.height_map[y][x]) == 'field':
                 return (x, y)
         return None
     
-    def update_movement(self, world: 'World') -> None:
+    def update_movement(self) -> None:
         """Process movement using Bresenham-style approach."""
         if self.state != "moving" or not self.destination:
             return
@@ -440,14 +434,14 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         if self.dragon_type != 'blade' and self.should_skip_movement():
             return
 
-        self._bresenham_move(world)
+        self._bresenham_move()
         
         # Check if arrived
         if self.coordinates == self.destination:
             self.state = "arrived"
-            self._on_movement_complete(world)
+            self._on_movement_complete()
     
-    def _bresenham_move(self, world: 'World') -> None:
+    def _bresenham_move(self) -> None:
         """Move using Bresenham line algorithm for smooth movement."""
         target_coords = self.destination
         
@@ -494,7 +488,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             forego_debt=self.dragon_type == 'blade'
         )
     
-    def _on_movement_complete(self, world: 'World') -> None:
+    def _on_movement_complete(self) -> None:
         """Called when movement to target completes."""
         if not self.current_action:
             return
@@ -502,32 +496,32 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         action = self.current_action
         
         if action.action_type == ActionType.FEED:
-            self._complete_feeding(world)
+            self._complete_feeding()
         elif action.action_type == ActionType.TEND_SPIRIT:
-            self._complete_tending(world)
+            self._complete_tending()
         elif action.action_type == ActionType.ATTACK:
-            self._complete_attack(world)
+            self._complete_attack()
         elif action.action_type == ActionType.RETURN_HOME:
             self.complete_current_action()
     
-    def _complete_feeding(self, world: 'World') -> None:
+    def _complete_feeding(self) -> None:
         """Complete a feeding action."""
         if self.current_target and hasattr(self.current_target, 'is_alive'):
             if self.current_target.is_alive:
                 if self.is_carnivore or self.is_anthropophage:
                     # Kill the target
-                    self.current_target.die(world, f"eaten by {self.name}")
+                    self.current_target.die(f"eaten by {self.name}")
                 self.think("My hunger is sated.")
         
         self.complete_current_action()
         self.current_target = None
     
-    def _complete_tending(self, world: 'World') -> None:
+    def _complete_tending(self) -> None:
         """Complete tending a spirit. Druid type tends all spirits in range."""
         if self.dragon_type == 'druid':
             # Area tenders bless all spirits within radius
             count = 0
-            for entity in world.entities:
+            for entity in self.world.entities:
                 if entity.__class__.__name__ == 'Spirit' and entity.is_alive:
                     if self.get_distance(entity.coordinates) <= TEND_RADIUS_DRUID:
                         if not getattr(entity, 'has_blessing', False):
@@ -547,19 +541,19 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         self.complete_current_action()
         self.current_target = None
     
-    def _complete_attack(self, world: 'World') -> None:
+    def _complete_attack(self) -> None:
         """Complete an attack action using combat resolution."""
         from game.world.combat import resolve_attack
         
         if self.current_target and hasattr(self.current_target, 'is_alive') and self.current_target.is_alive:
-            resolve_attack(self, self.current_target, world)
+            resolve_attack(self, self.current_target, self.world)
         
         self.complete_current_action()
         self.current_target = None
     
-    def check_for_encounters(self, world: 'World') -> Optional[Mobile]:
+    def check_for_encounters(self) -> Optional[Mobile]:
         """Check for entities that trigger encounters."""
-        nearby = self.get_nearby_entities(world, SCARE_RADIUS)
+        nearby = self.get_nearby_entities(self.world, SCARE_RADIUS)
         
         for entity in nearby:
             # Bandits flee from dragons
@@ -570,7 +564,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             if self.is_good:
                 if entity.__class__.__name__ in ('Caravan', 'Hero'):
                     # Check if they're being threatened
-                    for other in self.get_nearby_entities(world, PROTECTION_RADIUS):
+                    for other in self.get_nearby_entities(self.world, PROTECTION_RADIUS):
                         if other.__class__.__name__ == 'Bandit':
                             return other  # Return the threat to deal with
         
@@ -583,7 +577,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         
         return None
     
-    def react_to_encounter(self, world: 'World', other: 'Mobile') -> Optional[ScheduledAction]:
+    def react_to_encounter(self, other: 'Mobile') -> Optional[ScheduledAction]:
         """React to an encountered entity."""
         # Scare bandits away
         if other.__class__.__name__ == 'Bandit':
@@ -593,7 +587,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         # Good dragons protect
         if self.is_good and other.__class__.__name__ == 'Bandit':
             return ScheduledAction(
-                hour=world.time.current_hour,
+                hour=self.world.time.current_hour,
                 action_type=ActionType.ATTACK,
                 target=other,
                 priority=10
@@ -603,7 +597,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         if self.is_territorial:
             if other.__class__.__name__ in ('Hero', 'Caravan'):
                 return ScheduledAction(
-                    hour=world.time.current_hour,
+                    hour=self.world.time.current_hour,
                     action_type=ActionType.ATTACK,
                     target=other,
                     priority=10
@@ -611,18 +605,18 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         
         return None
     
-    def on_dawn(self, world: 'World') -> None:
+    def on_dawn(self) -> None:
         """Dawn: age, check death, build schedule."""
         self.is_sleeping = False
         
-        if self.process_aging(world):
+        if self.process_aging():
             return
         
-        self.build_schedule(world)
+        self.build_schedule()
     
-    def die(self, world: 'World', reason: str) -> None:
+    def die(self, reason: str) -> None:
         """Handle dragon death - domain becomes treasury."""
-        super().die(world, reason)
+        super().die(reason)
         
         if self.domain:
             self.domain.owner = None

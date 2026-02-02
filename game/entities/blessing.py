@@ -20,8 +20,8 @@ class Blessing(Entity):
     - Caravans (1 at a time)
     """
     
-    def __init__(self, coordinates: Coordinates, count: int = 1):
-        super().__init__("#FFD700", "✦", coordinates)  # Gold star
+    def __init__(self, world: 'World', coordinates: Coordinates, count: int = 1):
+        super().__init__(world, "#FFD700", "✦", coordinates)  # Gold star
         self.count = count  # Number of blessings at this location
     
     def take(self, amount: int = 1) -> int:
@@ -35,10 +35,10 @@ class Blessing(Entity):
         """Check if all blessings have been taken."""
         return self.count <= 0
     
-    def update(self, world: 'World') -> None:
+    def update(self) -> None:
         """Remove self if empty."""
         if self.is_empty:
-            world.remove_entity(self)
+            self.world.remove_entity(self)
     
     def serialize(self) -> dict:
         """Serialize for JSON output."""
@@ -59,5 +59,5 @@ def drop_blessing(world: 'World', coordinates: Coordinates, count: int = 1) -> N
             return
     
     # Create new blessing pile
-    blessing = Blessing(coordinates, count)
+    blessing = Blessing(world, coordinates, count)
     world.add_entity(blessing)

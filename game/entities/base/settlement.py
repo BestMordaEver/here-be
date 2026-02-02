@@ -13,12 +13,13 @@ class Settlement(Entity, Thinking):
     
     def __init__(
         self,
+        world: 'World',
         coordinates: Coordinates,
         life: int,
         color: str = "",
         character: str = "",
     ):
-        Entity.__init__(self, color, character, coordinates)
+        Entity.__init__(self, world, color, character, coordinates)
         Thinking.__init__(self)
         
         # Health system for settlements
@@ -28,11 +29,11 @@ class Settlement(Entity, Thinking):
         # Blessing system - only resource that matters
         self.blessings = 0
     
-    def hurt(self, world: 'World', damage: int, source: str) -> None:
+    def hurt(self, damage: int, source: str) -> None:
         """Inflict damage to the settlement."""
         self.life -= damage
         if self.life <= 0:
-            self.die(world, source)
+            self.die(source)
     
     def heal(self, amount: int) -> None:
         """Heal the settlement, not exceeding max life."""
@@ -50,11 +51,11 @@ class Settlement(Entity, Thinking):
                 return True
         return False
     
-    def die(self, world : 'World', reason) -> None:
+    def die(self, reason) -> None:
         """Handle settlement death/depletion."""
-        super().die(world, reason)
+        super().die(reason)
     
-    def send_caravan(self, world: 'World', destination, mission, target_spirit=None) -> 'Caravan':
+    def send_caravan(self, destination, mission, target_spirit=None) -> 'Caravan':
         """Unified method to create and send a caravan.
         Args:
             destination: Settlement or Coordinates to send caravan to
@@ -67,6 +68,7 @@ class Settlement(Entity, Thinking):
         
         # Create caravan at settlement's southern gate
         caravan = Caravan(
+            world,
             coordinates=(self.coordinates[0], self.coordinates[1] + 2),
             home=self,
             destination=destination,
@@ -74,10 +76,10 @@ class Settlement(Entity, Thinking):
             target_spirit=target_spirit
         )
         
-        world.add_entity(caravan)
+        self.world.add_entity(caravan)
         return caravan
     
-    def update(self, world: 'World') -> None:
+    def update(self) -> None:
         pass
 
     def serialize(self) -> Dict[str, Any]:

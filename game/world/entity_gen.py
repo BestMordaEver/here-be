@@ -242,6 +242,7 @@ def generate_spirits(world: 'World') -> None:
 					
 					# Create the spirit with its domain tiles
 					spirit = Spirit(
+						world=world,
 						type=biome,
 						coordinates=spawn_coord,
 						domain_tiles=sub_node
@@ -327,7 +328,7 @@ def attempt_spawn_village(world: 'World') -> bool:
 	
 	# Spawn successful - create village
 	name = generate_village_name()
-	village = Village(name, (x, y))
+	village = Village(world, name, (x, y))
 	world.add_entity(village)
 	return True
 
@@ -365,7 +366,7 @@ def attempt_spawn_cattle(world: 'World') -> bool:
 		
 		# Spawn cattle
 		color = random.choice(CATTLE_COLORS)
-		cattle = Cattle(color, (x, y), life=30)
+		cattle = Cattle(world, color, (x, y))
 		world.add_entity(cattle)
 		return True
 	
@@ -415,7 +416,7 @@ def attempt_spawn_city(world: 'World') -> bool:
 		
 		# Spawn successful - create city with starting blessings
 		name = generate_village_name()  # Use same name generator
-		city = City(name, (x, y))		
+		city = City(world, name, (x, y))		
 		city.blessings = CITY_STARTING_BLESSINGS
 		
 		world.add_entity(city)

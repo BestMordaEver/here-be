@@ -29,8 +29,8 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
     
     LIFESPAN_DAYS = 50  # Bandit dies after this many days (same as heroes)
 
-    def __init__(self, coordinates: Coordinates):
-        Mobile.__init__(self, "#960000", 'Ω', coordinates, loiter=1)  # Bandits skip 1 cycle
+    def __init__(self, world: 'World', coordinates: Coordinates):
+        Mobile.__init__(self, world, "#960000", 'Ω', coordinates, loiter=1)  # Bandits skip 1 cycle
         Thinking.__init__(self, intent="lurking")
         Scheduled.__init__(self)
         self.init_aging()
@@ -41,32 +41,32 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         self.hiding_spot: Optional[Coordinates] = None
         self.fleeing_from = None  # Entity we're fleeing from
     
-    def is_passable(self, coordinates: Coordinates, world: 'World') -> bool:
+    def is_passable(self, coordinates: Coordinates) -> bool:
         """Bandits can move through fields and forests."""
         x, y = coordinates
-        if x < 0 or y < 0 or x >= len(world.height_map[0]) or y >= len(world.height_map):
+        if x < 0 or y < 0 or x >= len(self.world.height_map[0]) or y >= len(self.world.height_map):
             return False
         
-        height = world.height_map[y][x]
-        biome = world.get_biome_from_height(height)
+        height = self.world.height_map[y][x]
+        biome = self.world.get_biome_from_height(height)
         
         if biome not in ('field', 'forest'):
             return False
         
         # Can't move through settlements
-        for entity in world.entities:
+        for entity in self.world.entities:
             if isinstance(entity, Settlement) and entity.occupies(coordinates):
                 return False
         
         return True
     
-    def is_in_forest(self, world: 'World') -> bool:
+    def is_in_forest(self) -> bool:
         """Check if bandit is currently in a forest tile."""
         x, y = self.coordinates
-        height = world.height_map[y][x]
-        return world.get_biome_from_height(height) == 'forest'
+        height = self.world.height_map[y][x]
+        return self.world.get_biome_from_height(height) == 'forest'
     
-    def find_nearby_forest(self, world: 'World') -> Optional[Coordinates]:
+    def find_nearby_forest(self) -> Optional[Coordinates]:
         """Find nearest forest tile to hide in."""
         best_distance = float('inf')
         best_coord = None
@@ -78,11 +78,11 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
                         continue
                     
                     x, y = self.coordinates[0] + dx, self.coordinates[1] + dy
-                    if x < 0 or y < 0 or x >= world.WIDTH or y >= world.HEIGHT:
+                    if x < 0 or y < 0 or x >= self.world.WIDTH or y >= self.world.HEIGHT:
                         continue
                     
-                    height = world.height_map[y][x]
-                    if world.get_biome_from_height(height) == 'forest':
+                    height = self.world.height_map[y][x]
+                    if self.world.get_biome_from_height(height) == 'forest':
                         dist = (dx**2 + dy**2)**0.5
                         if dist < best_distance:
                             best_distance = dist
@@ -93,28 +93,28 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         
         return best_coord
     
-    def on_old_age_death(self, world: 'World') -> None:
+    def on_old_age_death(self) -> None:
         """Clear trinkets before dying of old age so nothing drops."""
         self.trinkets = 0
     
-    def die(self, world: 'World', reason: str) -> None:
+    def die(self, reason: str) -> None:
         """Handle bandit death - drop trinkets as blessings."""
         # Drop trinkets (already 0 if old age via on_old_age_death)
         if self.trinkets > 0:
             from .blessing import drop_blessing
-            drop_blessing(world, self.coordinates, self.trinkets)
+            drop_blessing(self.world, self.coordinates, self.trinkets)
             self.trinkets = 0
         
-        super().die(world, reason)
+        super().die(reason)
     
-    def on_dawn(self, world: 'World') -> None:
+    def on_dawn(self) -> None:
         """Dawn: age, check death, build schedule."""
-        if self.process_aging(world):
+        if self.process_aging():
             return
         
-        self.build_schedule(world)
+        self.build_schedule()
     
-    def build_schedule(self, world: 'World') -> None:
+    def build_schedule(self) -> None:
         """Build daily schedule - alternate between lurking and seeking."""
         self.schedule = []
         self.current_action = None
@@ -129,22 +129,22 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         self.days_since_robbery += 1
         
         if self.behavior == BanditBehavior.LURKING:
-            self._schedule_lurking(world)
+            self._schedule_lurking()
         else:
-            self._schedule_seeking(world)
+            self._schedule_seeking()
     
-    def _schedule_lurking(self, world: 'World') -> None:
+    def _schedule_lurking(self) -> None:
         """Schedule: hide in forest, wait to ambush caravans."""
         # Find a forest spot if not in one
-        if not self.is_in_forest(world):
-            forest = self.find_nearby_forest(world)
+        if not self.is_in_forest():
+            forest = self.find_nearby_forest()
             if forest:
                 self.hiding_spot = forest
                 self.add_scheduled_action(7, ActionType.MOVE_TO, forest)
         
         # If desperate (3 days without robbery), attack village
         if self.days_since_robbery >= DAYS_WITHOUT_ROBBERY:
-            village = self._find_nearby_village(world)
+            village = self._find_nearby_village()
             if village:
                 self.add_scheduled_action(14, ActionType.ATTACK, village)
                 self.think("Hunger drives me to desperate measures.")
@@ -155,10 +155,10 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         
         self.think("I shall wait in ambush today.")
     
-    def _schedule_seeking(self, world: 'World') -> None:
+    def _schedule_seeking(self) -> None:
         """Schedule: seek out lairs, treasuries, ruins to pillage."""
         # Look for pillage targets
-        target = self._find_pillage_target(world)
+        target = self._find_pillage_target()
         
         if target:
             self.add_scheduled_action(8, ActionType.MOVE_TO, target.coordinates)
@@ -172,14 +172,14 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         
         # If desperate, attack village
         if self.days_since_robbery >= DAYS_WITHOUT_ROBBERY:
-            village = self._find_nearby_village(world)
+            village = self._find_nearby_village()
             if village:
                 self.add_scheduled_action(16, ActionType.ATTACK, village)
     
-    def _find_nearby_village(self, world: 'World') -> Optional[Any]:
+    def _find_nearby_village(self) -> Optional[Any]:
         """Find a village to raid."""
         villages = []
-        for entity in world.entities:
+        for entity in self.world.entities:
             if entity.__class__.__name__ == 'Village' and entity.is_alive:
                 dist = self.get_distance(entity.coordinates)
                 if dist <= 30:
@@ -190,11 +190,11 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
             return villages[0][1]
         return None
     
-    def _find_pillage_target(self, world: 'World') -> Optional[Any]:
+    def _find_pillage_target(self) -> Optional[Any]:
         """Find a treasury, ruin, or unguarded domain to pillage."""
         targets = []
         
-        for entity in world.entities:
+        for entity in self.world.entities:
             # Treasury (dead dragon domain with treasure)
             if entity.__class__.__name__ == 'Domain':
                 if hasattr(entity, 'is_treasury') and entity.is_treasury:
@@ -210,22 +210,22 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
             return choice(targets)
         return None
     
-    def _find_nearby_caravan(self, world: 'World') -> Optional[Any]:
+    def _find_nearby_caravan(self) -> Optional[Any]:
         """Find a nearby caravan to ambush."""
-        for entity in world.entities:
+        for entity in self.world.entities:
             if entity.__class__.__name__ == 'Caravan' and entity.is_alive:
                 if self.get_distance(entity.coordinates) <= ATTACK_RANGE:
                     return entity
         return None
     
-    def on_hour(self, world: 'World', hour: int) -> None:
+    def on_hour(self, hour: int) -> None:
         """Process hourly updates."""
         if self.is_sleeping:
             return
         
         # If lurking in forest, check for caravans to ambush
-        if self.behavior == BanditBehavior.LURKING and self.is_in_forest(world):
-            caravan = self._find_nearby_caravan(world)
+        if self.behavior == BanditBehavior.LURKING and self.is_in_forest():
+            caravan = self._find_nearby_caravan()
             if caravan:
                 # Interrupt to attack
                 attack = ScheduledAction(
@@ -235,7 +235,7 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
                     priority=10
                 )
                 self.interrupt_for_encounter(attack)
-                self.set_target_entity(caravan, world)
+                self.set_target_entity(caravan)
                 self.think("A caravan! Perfect prey.")
                 return
         
@@ -243,15 +243,15 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         action = self.get_action_for_hour(hour)
         if action:
             self.start_action(action)
-            self._execute_action_start(world, action)
+            self._execute_action_start(action)
     
-    def _execute_action_start(self, world: 'World', action: ScheduledAction) -> None:
+    def _execute_action_start(self, action: ScheduledAction) -> None:
         """Start executing a scheduled action."""
         if action.action_type == ActionType.MOVE_TO:
             if isinstance(action.target, tuple):
-                self.set_destination(action.target, world)
+                self.set_destination(action.target)
             elif hasattr(action.target, 'coordinates'):
-                self.set_destination(action.target.coordinates, world)
+                self.set_destination(action.target.coordinates)
             else:
                 self.complete_current_action()
                 
@@ -260,26 +260,26 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
             from random import randint
             x = self.coordinates[0] + randint(-15, 15)
             y = self.coordinates[1] + randint(-15, 15)
-            x = max(0, min(world.WIDTH - 1, x))
-            y = max(0, min(world.HEIGHT - 1, y))
-            self.set_destination((x, y), world)
+            x = max(0, min(self.world.WIDTH - 1, x))
+            y = max(0, min(self.world.HEIGHT - 1, y))
+            self.set_destination((x, y))
             
         elif action.action_type == ActionType.IDLE:
             self.complete_current_action()
             
         elif action.action_type == ActionType.ATTACK:
             if action.target and hasattr(action.target, 'coordinates'):
-                self.set_target_entity(action.target, world)
+                self.set_target_entity(action.target)
             else:
                 self.complete_current_action()
                 
         elif action.action_type == ActionType.PILLAGE:
             if action.target and hasattr(action.target, 'coordinates'):
-                self.set_destination(action.target.coordinates, world)
+                self.set_destination(action.target.coordinates)
             else:
                 self.complete_current_action()
     
-    def on_arrival(self, world: 'World') -> None:
+    def on_arrival(self) -> None:
         """Called when arriving at destination."""
         if not self.current_action:
             return
@@ -287,13 +287,13 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         action = self.current_action
         
         if action.action_type == ActionType.ATTACK:
-            self._execute_attack(world)
+            self._execute_attack()
         elif action.action_type == ActionType.PILLAGE:
-            self._execute_pillage(world)
+            self._execute_pillage()
         else:
             self.complete_current_action()
     
-    def _execute_attack(self, world: 'World') -> None:
+    def _execute_attack(self) -> None:
         """Execute an attack on target using combat resolution."""
         from game.world.combat import resolve_attack
         
@@ -303,10 +303,10 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
             self.complete_current_action()
             return
         
-        resolve_attack(self, target, world)
+        resolve_attack(self, target, self.world)
         self.complete_current_action()
     
-    def _execute_pillage(self, world: 'World') -> None:
+    def _execute_pillage(self) -> None:
         """Pillage a treasury or ruins."""
         target = self.target_entity
         
@@ -324,9 +324,9 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         
         self.complete_current_action()
     
-    def check_for_encounters(self, world: 'World') -> Optional[Mobile]:
+    def check_for_encounters(self) -> Optional[Mobile]:
         """Check for dragons (flee) or heroes (danger)."""
-        nearby = self.get_nearby_entities(world, FEAR_RADIUS)
+        nearby = self.get_nearby_entities(self.world, FEAR_RADIUS)
         
         for entity in nearby:
             # Fear dragons
@@ -340,15 +340,15 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         
         return None
     
-    def react_to_encounter(self, world: 'World', other: 'Mobile') -> Optional[ScheduledAction]:
+    def react_to_encounter(self, other: 'Mobile') -> Optional[ScheduledAction]:
         """React to encounters - flee from dragons and heroes."""
         if other.__class__.__name__ in ('Dragon', 'DragonBase'):
             # Flee from dragon
             self.fleeing_from = other
-            self.flee_from(other, world)
+            self.flee_from(other)
             self.think("A dragon! I must flee!")
             return ScheduledAction(
-                hour=world.time.current_hour,
+                hour=self.world.time.current_hour,
                 action_type=ActionType.FLEE,
                 target=None,
                 priority=100
@@ -358,10 +358,10 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
             if hasattr(other, 'mood') and other.mood == 'vengeful':
                 # Try to flee from vengeful hero
                 self.fleeing_from = other
-                self.flee_from(other, world)
+                self.flee_from(other)
                 self.think("A vengeful hero! Run!")
                 return ScheduledAction(
-                    hour=world.time.current_hour,
+                    hour=self.world.time.current_hour,
                     action_type=ActionType.FLEE,
                     target=None,
                     priority=100
@@ -369,19 +369,19 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         
         return None
     
-    def update_movement(self, world: 'World') -> None:
+    def update_movement(self) -> None:
         """Update movement and pick up any blessings at current location."""
-        super().update_movement(world)
+        super().update_movement()
         
         # Try to pick up blessings at current location
         if self.trinkets < MAX_TRINKETS:
-            self._try_pickup_blessings(world)
+            self._try_pickup_blessings()
     
-    def _try_pickup_blessings(self, world: 'World') -> None:
+    def _try_pickup_blessings(self) -> None:
         """Pick up dropped blessings at current location as trinkets."""
         from .blessing import Blessing
         
-        for entity in world.entities:
+        for entity in self.world.entities:
             if isinstance(entity, Blessing) and entity.coordinates == self.coordinates:
                 can_take = MAX_TRINKETS - self.trinkets
                 taken = entity.take(can_take)

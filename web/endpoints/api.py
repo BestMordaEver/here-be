@@ -49,7 +49,7 @@ def get_world():
         
         # For Domain entities, populate scorched terrain overlay
         if entity.__class__.__name__ == 'Domain':
-            overlay_dict = entity.get_scorched_terrain_overlay(world)
+            overlay_dict = entity.get_scorched_terrain_overlay()
             # Convert to JSON-friendly format
             data["scorched_terrain_overlay"] = {
                 str(coords): [symbol, color] 
@@ -59,12 +59,11 @@ def get_world():
         serialized_entities.append(data)
     
     # Get current game time
-    game_time = world.time.get_current_time()
+    game_time = world.time.current_time
     
     return jsonify({
         "entities": serialized_entities,
         "game_day": game_time.day,
         "game_hour": game_time.hour,
-        "time_of_day": game_time.time_of_day.value,
         "timestamp": time.time(),
     })

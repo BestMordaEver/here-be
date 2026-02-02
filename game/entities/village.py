@@ -22,8 +22,8 @@ class Village(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
     
     RUINS_DURATION_DAYS = 50  # Days before ruins disappear
     
-    def __init__(self, name: str, coordinates: Coordinates):
-        super().__init__(coordinates, life=STARTING_LIFE)
+    def __init__(self, world: 'World', name: str, coordinates: Coordinates):
+        super().__init__(world, coordinates, life=STARTING_LIFE)
         Named.__init__(self, name)
         SettlementEventsMixin.__init__(self)
         self.init_ruins()
@@ -35,28 +35,28 @@ class Village(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
         self._nearby_lake_spirits = None  # Cached list (lazy init)
         self._last_blessing_day = -1
 
-    def on_dawn(self, world: 'World') -> None:
+    def on_dawn(self) -> None:
         """Handle dawn event - process daily settlement event and try to get blessing."""
-        if self.process_ruins(world):
+        if self.process_ruins():
             return
         
-        self.process_daily_event(world)
-        self._try_extract_lake_blessing(world)
+        self.process_daily_event()
+        self._try_extract_lake_blessing()
         
         # Natural recovery
         if self.blessings > 0:
             self.heal(RECOVERY_RATE)
     
-    def _try_extract_lake_blessing(self, world: 'World') -> None:
+    def _try_extract_lake_blessing(self) -> None:
         """Try to extract a blessing from a nearby lake spirit (once per day)."""
-        current_day = world.day_night_cycle.get_current_time().day
+        current_day = self.world.time.current_day
         if current_day == self._last_blessing_day:
             return
         
         # Lazy init nearby lake spirits cache
         if self._nearby_lake_spirits is None:
             self._nearby_lake_spirits = []
-            for entity in world.entities:
+            for entity in self.world.entities:
                 if entity.__class__.__name__ == 'Spirit' and entity.type == 'water':
                     if self.get_distance(entity.coordinates) <= LAKE_BLESSING_RADIUS:
                         self._nearby_lake_spirits.append(entity)

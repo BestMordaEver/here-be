@@ -15,9 +15,9 @@ PILLAGE_TREASURE_AMOUNT = 50  # Treasure gained from pillaging
 class Domain(Entity, Mortal):
     """A dragon's domain - their territory marker and treasury."""
     
-    def __init__(self, coordinates: Coordinates, dragon: 'Dragon', is_scorched: bool = False):
+    def __init__(self, world: 'World', coordinates: Coordinates, dragon: 'Dragon', is_scorched: bool = False):
         # Domain color matches dragon color
-        super().__init__(dragon.color, "ʘ", coordinates)
+        super().__init__(world, dragon.color, "ʘ", coordinates)
         self.dragon = dragon
         self.is_scorched = is_scorched
         self.treasure = 0  # Accumulated treasure
@@ -58,7 +58,7 @@ class Domain(Entity, Mortal):
         
         return tiles
     
-    def get_scorched_terrain_overlay(self, world: 'World') -> Dict[Coordinates, Tuple[str, str]]:
+    def get_scorched_terrain_overlay(self) -> Dict[Coordinates, Tuple[str, str]]:
         """Get terrain overlays for scorched tiles.
         Returns dict mapping coordinates to (symbol, color) for terrain changes.
         Water→cracked bed (ʬ), grass→ash (…), forest→burnt (ɹ/ɺ), mountains lose snow.
@@ -76,12 +76,12 @@ class Domain(Entity, Mortal):
                     x, y = cx + dx, cy + dy
                     
                     # Check bounds
-                    if x < 0 or y < 0 or x >= len(world.height_map[0]) or y >= len(world.height_map):
+                    if x < 0 or y < 0 or x >= len(self.world.height_map[0]) or y >= len(self.world.height_map):
                         continue
                     
                     # Get biome and apply scorching effect
-                    height = world.height_map[y][x]
-                    biome = world.get_biome_from_height(height)
+                    height = self.world.height_map[y][x]
+                    biome = self.world.get_biome_from_height(height)
                     
                     if biome == 'water':
                         overlays[(x, y)] = ('ʬ', '#8B7355')  # Cracked bed, brown
@@ -98,7 +98,7 @@ class Domain(Entity, Mortal):
         """Check if domain occupies the given coordinates."""
         return self.coordinates == coordinates
     
-    def can_be_pillaged(self, world: 'World') -> bool:
+    def can_be_pillaged(self) -> bool:
         """Check if domain can be pillaged (dragon dead or far away)."""
         if not self.dragon.is_alive:
             return True
@@ -107,15 +107,15 @@ class Domain(Entity, Mortal):
         distance = self.dragon.get_distance(self.coordinates)
         return distance > 15
     
-    def pillage(self, world: 'World') -> int:
+    def pillage(self) -> int:
         """Pillage the domain, removing scorched earth and returning treasure.
         Returns amount of treasure gained.
         """
         treasure_gained = self.treasure + PILLAGE_TREASURE_AMOUNT
-        self.die(world, "pillaged")
+        self.die("pillaged")
         return treasure_gained
     
-    def update(self, world: 'World') -> None:
+    def update(self) -> None:
         """Update domain state."""
         if self.is_dead:
             return

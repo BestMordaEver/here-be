@@ -8,12 +8,12 @@ if TYPE_CHECKING:
 class Mortal:
     """Mixin for entities that should be automatically removed from world when dead."""
     
-    def update(self, world: 'World') -> None:
+    def update(self) -> None:
         """Check if dead and auto-cleanup before normal update."""
         # Check is_dead attribute (assumes Entity base class)
         if hasattr(self, 'is_dead') and self.is_dead:
-            world.remove_entity(self)
+            self.world.remove_entity(self)
             return
         
         # Call parent update
-        super().update(world)
+        super().update()

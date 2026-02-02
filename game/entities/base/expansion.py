@@ -4,7 +4,6 @@ from .named import Named
 
 if TYPE_CHECKING:
     from .entity import Coordinates
-    from game.world import World
 
 
 # Expansion constants
@@ -21,7 +20,7 @@ class ExpansionMixin(Named):
     subsidiary_camps: List[Any]
     _days_since_settler: int
     
-    def try_expand(self, world: 'World') -> None:
+    def try_expand(self) -> None:
         """Try to send settler caravan (every 2 days if under camp limit)."""
         # Only villages and cities expand
         if self.__class__.__name__ not in ('Village', 'City'):
@@ -50,14 +49,14 @@ class ExpansionMixin(Named):
             return
         
         # Find spirit to exploit
-        spirit = self._find_expansion_spirit(world)
+        spirit = self._find_expansion_spirit()
         if spirit:
-            location = self.find_valid_camp_location(spirit, world)
+            location = self.find_valid_camp_location(spirit)
             if location:
                 spirit.is_occupied = True  # Mark spirit as claimed
-                self._send_settler_caravan(world, location, target_spirit=spirit)
+                self._send_settler_caravan(location, target_spirit=spirit)
     
-    def _find_expansion_spirit(self, world: 'World') -> Optional[Any]:
+    def _find_expansion_spirit(self) -> Optional[Any]:
         """Find best spirit to expand to, prioritizing resource requirements."""
         if not hasattr(self, 'subsidiary_camps'):
             return None
@@ -102,7 +101,7 @@ class ExpansionMixin(Named):
         best_spirit = None
         best_distance = float('inf')
         
-        for entity in world.entities:
+        for entity in self.world.entities:
             if entity.__class__.__name__ != 'Spirit' or not entity.is_alive:
                 continue
             if entity.type not in priority_types:
@@ -117,16 +116,17 @@ class ExpansionMixin(Named):
         
         return best_spirit
     
-    def _send_settler_caravan(self, world: 'World', destination, target_spirit=None, is_village: bool = False) -> None:
-        """Send a settler caravan to establish camp or village."""
+    def _send_settler_caravan(self, location, target_spirit) -> None:
+        """Send a settler caravan to establish camp."""
         from game.entities.caravan import Caravan, CaravanMission
         
-        mission = CaravanMission.SETTLE_VILLAGE if is_village else CaravanMission.SETTLE_CAMP
+        mission = CaravanMission.SETTLE_CAMP
         
         caravan = Caravan(
+            self.world,
             coordinates=(self.coordinates[0], self.coordinates[1] + 2),
             home=self,
-            destination=destination,
+            destination=location,
             mission=mission,
             target_spirit=target_spirit
         )
@@ -134,9 +134,9 @@ class ExpansionMixin(Named):
         if hasattr(self, 'subsidiary_camps'):
             self.subsidiary_camps.append(caravan)
         
-        world.add_entity(caravan)
+        self.world.add_entity(caravan)
     
-    def find_valid_camp_location(self, spirit, world: 'World') -> Optional['Coordinates']:
+    def find_valid_camp_location(self, spirit) -> Optional['Coordinates']:
         """Find the closest valid location for a worker camp near a spirit.
         Returns None if no valid location found."""
         spirit_x, spirit_y = spirit.coordinates
@@ -152,13 +152,13 @@ class ExpansionMixin(Named):
                     continue
                 
                 # Check if within world bounds (need room for 2x2 camp)
-                if x < 0 or y < 0 or x >= world.WIDTH - 1 or y >= world.HEIGHT - 1:
+                if x < 0 or y < 0 or x >= self.world.WIDTH - 1 or y >= self.world.HEIGHT - 1:
                     continue
                 
                 from game.world import check_settlement_distance
 
                 # Check if at least minimum distance from any settlement
-                if not check_settlement_distance(world, x, y, min_distance=MIN_CAMP_SETTLEMENT_DISTANCE):
+                if not check_settlement_distance(self.world, x, y, min_distance=MIN_CAMP_SETTLEMENT_DISTANCE):
                     continue
                 
                 # Check if 2x2 area is all plains biome
@@ -166,8 +166,8 @@ class ExpansionMixin(Named):
                 for dy_check in [0, 1]:
                     for dx_check in [0, 1]:
                         check_x, check_y = x + dx_check, y + dy_check
-                        height = world.height_map[check_y][check_x]
-                        if world.get_biome_from_height(height) != 'field':
+                        height = self.world.height_map[check_y][check_x]
+                        if self.world.get_biome_from_height(height) != 'field':
                             all_plains = False
                             break
                     if not all_plains:
@@ -180,7 +180,7 @@ class ExpansionMixin(Named):
                 occupied = False
                 for dy_check in [0, 1]:
                     for dx_check in [0, 1]:
-                        if world.get_entities_at((x + dx_check, y + dy_check)):
+                        if self.world.get_entities_at((x + dx_check, y + dy_check)):
                             occupied = True
                             break
                     if occupied:

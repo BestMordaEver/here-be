@@ -13,11 +13,12 @@ class Spirit(Entity):
 
     def __init__(
         self,
+        world: 'World',
         type: str,
         coordinates: Coordinates,
         domain_tiles: List[Tuple[int, int]] = None,
     ):
-        super().__init__("", "", coordinates)
+        super().__init__(world, "", "", coordinates)
         self.type = type    # forest, water, mountain
         self.domain_tiles = domain_tiles if domain_tiles is not None else []
         self.is_occupied = False  # Whether a camp is on this spirit
@@ -39,7 +40,7 @@ class Spirit(Entity):
             return True
         return False
     
-    def update(self, world) -> None:
+    def update(self) -> None:
         """Update spirit state during timestep."""
         pass  # Spirits are passive
     

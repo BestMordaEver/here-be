@@ -1,6 +1,6 @@
 from .base import Entity, Coordinates, ExpansionMixin, Mobile, Named, Settlement, Thinking, Scheduled, ScheduledAction, ActionType, ActionState
 from .base.settlement_events import SettlementEventsMixin, SettlementEvent
-from .dragon import DragonBase as Dragon, DragonMood, DragonPronouns
+from .dragon import Dragon, DragonMood, DragonPronouns
 from .caravan import Caravan, CaravanMission
 from .bandit import Bandit, BanditBehavior
 from .cattle import Cattle

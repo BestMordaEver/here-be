@@ -18,52 +18,52 @@ SCORCHED_FEAR_RADIUS = 8       # Distance to avoid scorched land
 class Cattle(Mortal, Mobile, Scheduled):
     """Cattle that wander and graze, fearing dragons and scorched land."""
     
-    def __init__(self, color: str, coordinates: Coordinates):
-        Mobile.__init__(self, color, 'ɤ', coordinates, loiter=10)  # Cattle skip 10 cycles
+    def __init__(self, world: 'World', color: str, coordinates: Coordinates):
+        Mobile.__init__(self, world, color, 'ɤ', coordinates, loiter=10)  # Cattle skip 10 cycles
         Scheduled.__init__(self)
         
         self.grazing = True
         self.fleeing_from = None
     
-    def is_passable(self, coordinates: Coordinates, world: 'World') -> bool:
+    def is_passable(self, coordinates: Coordinates) -> bool:
         """Cattle can only move through fields."""
         x, y = coordinates
-        if x < 0 or y < 0 or x >= len(world.height_map[0]) or y >= len(world.height_map):
+        if x < 0 or y < 0 or x >= len(self.world.height_map[0]) or y >= len(self.world.height_map):
             return False
         
-        height = world.height_map[y][x]
-        if world.get_biome_from_height(height) != 'field':
+        height = self.world.height_map[y][x]
+        if self.world.get_biome_from_height(height) != 'field':
             return False
         
         # Avoid settlements
-        for entity in world.entities:
+        for entity in self.world.entities:
             if isinstance(entity, Settlement) and entity.occupies(coordinates):
                 return False
         
         # Avoid scorched land
-        if self._is_scorched(coordinates, world):
+        if self._is_scorched(coordinates):
             return False
         
         return True
     
-    def _is_scorched(self, coordinates: Coordinates, world: 'World') -> bool:
+    def _is_scorched(self, coordinates: Coordinates) -> bool:
         """Check if coordinates are in scorched dragon territory."""
-        for entity in world.entities:
+        for entity in self.world.entities:
             if entity.__class__.__name__ == 'Domain':
                 if hasattr(entity, 'is_scorched') and entity.is_scorched:
                     if entity.get_distance(coordinates) <= 10:  # Scorched radius
                         return True
         return False
     
-    def _find_nearby_village(self, world: 'World') -> Optional[Settlement]:
+    def _find_nearby_village(self) -> Optional[Settlement]:
         """Find a village within attraction radius."""
-        for entity in world.entities:
+        for entity in self.world.entities:
             if entity.__class__.__name__ == 'Village' and entity.is_alive:
                 if self.get_distance(entity.coordinates) <= VILLAGE_ATTRACTION_RADIUS:
                     return entity
         return None
     
-    def build_schedule(self, world: 'World') -> None:
+    def build_schedule(self) -> None:
         """Build simple daily schedule - just wander."""
         self.schedule = []
         self.current_action = None
@@ -74,7 +74,7 @@ class Cattle(Mortal, Mobile, Scheduled):
         self.add_scheduled_action(11, ActionType.WANDER)
         self.add_scheduled_action(15, ActionType.WANDER)
     
-    def on_hour(self, world: 'World', hour: int) -> None:
+    def on_hour(self, hour: int) -> None:
         """Process hourly updates."""
         if self.is_sleeping:
             return
@@ -82,11 +82,11 @@ class Cattle(Mortal, Mobile, Scheduled):
         action = self.get_action_for_hour(hour)
         if action:
             self.start_action(action)
-            self._choose_wander_destination(world)
+            self._choose_wander_destination()
     
-    def _choose_wander_destination(self, world: 'World') -> None:
+    def _choose_wander_destination(self) -> None:
         """Choose a destination, gravitating toward villages."""
-        village = self._find_nearby_village(world)
+        village = self._find_nearby_village()
         
         for _ in range(10):  # Try 10 times to find valid destination
             if village:
@@ -103,25 +103,25 @@ class Cattle(Mortal, Mobile, Scheduled):
                 target = (cx + dx, cy + dy)
             
             # Clamp to world bounds
-            x = max(0, min(world.WIDTH - 1, target[0]))
-            y = max(0, min(world.HEIGHT - 1, target[1]))
+            x = max(0, min(self.world.WIDTH - 1, target[0]))
+            y = max(0, min(self.world.HEIGHT - 1, target[1]))
             target = (x, y)
             
-            if self.is_passable(target, world):
-                self.set_destination(target, world)
+            if self.is_passable(target):
+                self.set_destination(target)
                 return
         
         # Couldn't find valid destination, stay put
         self.complete_current_action()
     
-    def on_arrival(self, world: 'World') -> None:
+    def on_arrival(self) -> None:
         """Called when arriving at destination - just complete action."""
         self.complete_current_action()
         self.grazing = True
     
-    def check_for_encounters(self, world: 'World') -> Optional[Mobile]:
+    def check_for_encounters(self) -> Optional[Mobile]:
         """Check for dragons (fear)."""
-        nearby = self.get_nearby_entities(world, FEAR_RADIUS)
+        nearby = self.get_nearby_entities(FEAR_RADIUS)
         
         for entity in nearby:
             if entity.__class__.__name__ in ('Dragon', 'DragonBase'):
@@ -129,14 +129,14 @@ class Cattle(Mortal, Mobile, Scheduled):
         
         return None
     
-    def react_to_encounter(self, world: 'World', other: 'Mobile') -> Optional[ScheduledAction]:
+    def react_to_encounter(self, other: 'Mobile') -> Optional[ScheduledAction]:
         """React to dragons by fleeing."""
         if other.__class__.__name__ in ('Dragon', 'DragonBase'):
             self.fleeing_from = other
             self.grazing = False
-            self.flee_from(other, world)
+            self.flee_from(other)
             return ScheduledAction(
-                hour=world.time.current_hour if hasattr(world, 'time') else 0,
+                hour=self.world.time.current_hour if hasattr(self.world, 'time') else 0,
                 action_type=ActionType.FLEE,
                 priority=100
             )

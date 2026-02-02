@@ -21,8 +21,8 @@ class City(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
     
     RUINS_DURATION_DAYS = 50  # Days before ruins disappear
     
-    def __init__(self, name: str, coordinates: Coordinates):
-        super().__init__(coordinates, life=STARTING_LIFE)
+    def __init__(self, world: 'World', name: str, coordinates: Coordinates):
+        super().__init__(world, coordinates, life=STARTING_LIFE)
         Named.__init__(self, name)
         SettlementEventsMixin.__init__(self)
         self.init_ruins()
@@ -133,36 +133,36 @@ class City(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
     def get_prioritized_resource_count(self) -> int:
         return 2
     
-    def on_dawn(self, world: 'World') -> None:
+    def on_dawn(self) -> None:
         """Handle dawn event - process daily settlement event and try selling blessings."""
-        if self.process_ruins(world):
+        if self.process_ruins():
             return
         
         # Check for spire creation on day after market day
         prev_event = self.current_event
         
-        self.process_daily_event(world)
+        self.process_daily_event()
         
         # Create spire after market day if we have enough blessings
         if prev_event == SettlementEvent.MARKET_DAY:
             if self.spire is None and self.blessings >= SPIRE_BLESSING_COST:
-                self._attempt_create_spire(world)
+                self._attempt_create_spire()
         
         # Cities with spires sell blessings to other cities without spires
         if self.spire and self.spire.is_alive and self.blessings > 1:
-            self._try_sell_blessing(world)
+            self._try_sell_blessing()
         
         # Natural recovery if we have blessings
         if self.blessings > 0:
             self.heal(2)
     
-    def _try_sell_blessing(self, world: 'World') -> None:
+    def _try_sell_blessing(self) -> None:
         """Try to sell a blessing to another city that doesn't have a spire."""
         from .caravan import CaravanMission
         
         # Find cities without spires in range
         target_cities = []
-        for entity in world.entities:
+        for entity in self.world.entities:
             if entity.__class__.__name__ == 'City' and entity != self and entity.is_alive:
                 if entity.spire is None or not entity.spire.is_alive:
                     distance = self.get_distance(entity.coordinates)
@@ -176,25 +176,25 @@ class City(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
         target_cities.sort(key=lambda x: x[0])
         target = target_cities[0][1]
         
-        self._send_blessing_caravan(world, target, retrieving=False)
+        self._send_blessing_caravan(self.world, target, retrieving=False)
         self.think(f"Sending blessing to {target.name}.")
 
-    def expand_settlement(self, world: 'World') -> None:
+    def expand_settlement(self) -> None:
         """Attempt to expand the city by creating villages or a spire.
         Called from on_dawn() checks - no longer cycle-based."""
         # First priority: Create village on promotion (once, free, immediate)
-        if not self.created_village_for_free and self._attempt_create_village(world):
+        if not self.created_village_for_free and self._attempt_create_village():
             return
         
         # Second priority: Create second village when we have excess blessings
-        if len(self.subsidiary_villages) == 1 and self.blessings >= 3 and self._attempt_create_village(world):
+        if len(self.subsidiary_villages) == 1 and self.blessings >= 3 and self._attempt_create_village():
             return
         
         # Third priority: Create spire when blessing threshold reached
         if self.spire is None and self.blessings >= SPIRE_BLESSING_COST:
-            self._attempt_create_spire(world)
+            self._attempt_create_spire()
     
-    def _attempt_create_spire(self, world: 'World') -> bool:
+    def _attempt_create_spire(self) -> bool:
         """Attempt to create a spire near the city."""
         from . import Spire
         
@@ -210,26 +210,26 @@ class City(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
         for loc in spire_locations:
             # Check if location is valid (plains, unoccupied)
             lx, ly = loc
-            if lx < 0 or ly < 0 or lx >= world.WIDTH or ly >= world.HEIGHT:
+            if lx < 0 or ly < 0 or lx >= self.world.WIDTH or ly >= self.world.HEIGHT:
                 continue
             
-            height = world.height_map[ly][lx]
-            if world.get_biome_from_height(height) != 'field':
+            height = self.world.height_map[ly][lx]
+            if self.world.get_biome_from_height(height) != 'field':
                 continue
             
-            if world.get_entities_at(loc):
+            if self.world.get_entities_at(loc):
                 continue
             
             # Valid location found
-            spire = Spire(loc, self)
+            spire = Spire(self.world, loc, self)
             self.blessings -= SPIRE_BLESSING_COST
-            world.add_entity(spire)
+            self.world.add_entity(spire)
             self.spire = spire
             return True
         
         return False
     
-    def _spawn_hero(self, world: 'World', city_born: bool = True) -> None:
+    def _spawn_hero(self, city_born: bool = True) -> None:
         """Spawn a hero from the city. Overrides mixin to check blessing requirements."""
         from . import Hero
         
@@ -238,16 +238,16 @@ class City(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
             return
         
         # Spawn at city gate
-        hero = Hero((self.coordinates[0], self.coordinates[1] + 3), self)
-        world.add_entity(hero)
+        hero = Hero(self.world, (self.coordinates[0], self.coordinates[1] + 3), self)
+        self.world.add_entity(hero)
         
         # Consume blessings for hero
         self.blessings -= HERO_BLESSING_COST
-        current_day = world.day_night_cycle.get_current_time().day if hasattr(world, 'day_night_cycle') else 0
+        current_day = self.world.time.get_current_time().day if hasattr(self.world, 'time') else 0
         self.last_hero_spawn_day = current_day
 
     
-    def _attempt_create_village(self, world: 'World') -> bool:
+    def _attempt_create_village(self) -> bool:
         """Attempt to create a subsidiary village. Returns True if successful."""
         # Check village limit (2 max)
         if len(self.subsidiary_villages) >= 2:
@@ -265,12 +265,13 @@ class City(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
                     test_x, test_y = x + dx, y + dy
                     
                     # Check if valid for village (only check spawn area, ignore settlement distance)
-                    if check_village_spawn_area(world, test_x, test_y):
+                    if check_village_spawn_area(self.world, test_x, test_y):
                         # Valid location! Create caravan
                         from . import Caravan
                         from .caravan import CaravanMission
                         
                         caravan = Caravan(
+                            self.world,
                             coordinates=(self.coordinates[0], self.coordinates[1] + 2),
                             home=self,
                             destination=(test_x, test_y),
@@ -280,7 +281,7 @@ class City(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
                         if not self.created_village_for_free:
                             self.created_village_for_free = True
                         
-                        world.add_entity(caravan)
+                        self.world.add_entity(caravan)
                         
                         # Track the subsidiary village
                         self.subsidiary_villages.append(caravan)

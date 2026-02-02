@@ -17,8 +17,8 @@ class Spire(Entity, Aging, Ruins):
     LIFESPAN_DAYS = 100  # Spire naturally crumbles after this many days
     RUINS_DURATION_DAYS = 50  # Ruins disappear after this many days
     
-    def __init__(self, coordinates: Coordinates, city: 'City'):
-        super().__init__("#DAA520", "Ї", coordinates)  # Goldenrod color
+    def __init__(self, world: 'World', coordinates: Coordinates, city: 'City'):
+        super().__init__(world, "#DAA520", "Ї", coordinates)  # Goldenrod color
         self.init_aging()
         self.init_ruins()
         self.city = city  # Parent city (shares blessings)
@@ -26,11 +26,11 @@ class Spire(Entity, Aging, Ruins):
         self.life = 200
         self._last_consumption_day = -1
     
-    def hurt(self, world: 'World', damage: int, source: str) -> None:
+    def hurt(self, damage: int, source: str) -> None:
         """Inflict damage to the spire."""
         self.life -= damage
         if self.life <= 0:
-            self.die(world, source)
+            self.die(source)
     
     def heal(self, amount: int) -> None:
         """Heal the spire, not exceeding max life."""
@@ -46,13 +46,13 @@ class Spire(Entity, Aging, Ruins):
         """Check if spire occupies the given coordinates."""
         return self.coordinates == coordinates
     
-    def consume_blessings(self, world: 'World') -> None:
+    def consume_blessings(self) -> None:
         """Consume blessings from parent city once per day to maintain spire."""
         if self.is_dead or not self.city.is_alive:
             return
         
         # Only consume once per day
-        current_day = world.day_night_cycle.get_current_time().day
+        current_day = self.world.time.get_current_time().day
         if current_day == self._last_consumption_day:
             return
         
@@ -63,23 +63,23 @@ class Spire(Entity, Aging, Ruins):
             self.city.blessings -= BLESSING_CONSUMPTION
             self.heal(1)  # Recover if blessings met
         else:
-            self.hurt(world, 1, 'disrepair')
+            self.hurt(1, 'disrepair')
     
-    def on_dawn(self, world: 'World') -> None:
+    def on_dawn(self) -> None:
         """Handle dawn - age the spire and check for natural death or ruin cleanup."""
-        if self.process_ruins(world):
+        if self.process_ruins():
             return
         
-        if self.process_aging(world):
+        if self.process_aging():
             return
         
         # If parent city dies, spire starts to decay faster
         if not self.city.is_alive:
-            self.hurt(world, 2, 'abandoned')
+            self.hurt(2, 'abandoned')
         
-        self.consume_blessings(world)
+        self.consume_blessings()
     
-    def update(self, world: 'World') -> None:
+    def update(self) -> None:
         """Update spire state - most logic moved to on_dawn."""
         pass
     

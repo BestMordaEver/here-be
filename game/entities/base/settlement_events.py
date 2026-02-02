@@ -30,7 +30,7 @@ class SettlementEventsMixin:
         self.blessings = 0            # Accumulated blessings
         self.is_protected = False     # Whether currently protected by hero
     
-    def determine_daily_event(self, world: 'World') -> SettlementEvent:
+    def determine_daily_event(self) -> SettlementEvent:
         """Determine today's event based on conditions."""
         self.days_since_market += 1
         
@@ -54,70 +54,70 @@ class SettlementEventsMixin:
         
         return SettlementEvent.NONE
     
-    def process_daily_event(self, world: 'World') -> None:
+    def process_daily_event(self) -> None:
         """Process the day's event. Called at dawn."""
-        self.current_event = self.determine_daily_event(world)
+        self.current_event = self.determine_daily_event()
         self.is_protected = False  # Reset protection status
         self.days_since_attack += 1
         
         if self.current_event == SettlementEvent.NONE:
-            self._process_none_day(world)
+            self._process_none_day()
         elif self.current_event == SettlementEvent.MOURNING:
-            self._process_mourning_day(world)
+            self._process_mourning_day()
         elif self.current_event == SettlementEvent.MARKET_DAY:
-            self._process_market_day(world)
+            self._process_market_day()
         elif self.current_event == SettlementEvent.REPAIRS:
-            self._process_repairs_day(world)
+            self._process_repairs_day()
     
-    def _process_none_day(self, world: 'World') -> None:
+    def _process_none_day(self) -> None:
         """Normal day - may send caravans, occasionally spawn heroes/heal."""
         # Try to expand (settler caravans every 2 days)
         # Uses ExpansionMixin.try_expand() if available
         if hasattr(self, 'try_expand'):
-            self.try_expand(world)
+            self.try_expand()
         
         # Find nearby settlements to trade with
         if random() < 0.4:  # 40% chance to send trade caravan
-            target = self._find_trade_target(world)
+            target = self._find_trade_target()
             if target:
-                self._send_trade_caravan(world, target)
+                self._send_trade_caravan(target)
         
         # Villages may spawn hero (rare)
         if self.__class__.__name__ == 'Village' and random() < 0.05:
-            self._spawn_hero(world, city_born=False)
+            self._spawn_hero(city_born=False)
         
         # Cities may heal
         if self.__class__.__name__ == 'City' and random() < 0.1:
             self.heal(1)
     
-    def _process_mourning_day(self, world: 'World') -> None:
+    def _process_mourning_day(self) -> None:
         """Mourning - no outbound activity."""
         # Just mourn, no caravans
         if hasattr(self, 'think'):
             self.think("The settlement mourns its losses...")
     
-    def _process_market_day(self, world: 'World') -> None:
+    def _process_market_day(self) -> None:
         """Market day - busy trading, may spawn heroes."""
         # Neighbors may send caravans to us
         # (They check our event status and send caravans to market days)
         
         # Cities may spawn hero
         if self.__class__.__name__ == 'City' and random() < 0.2:
-            self._spawn_hero(world, city_born=True)
+            self._spawn_hero(city_born=True)
         
         # Villages may spawn hero
         if self.__class__.__name__ == 'Village' and random() < 0.1:
-            self._spawn_hero(world, city_born=False)
+            self._spawn_hero(city_born=False)
         
         if hasattr(self, 'think'):
             self.think("Market day! The square bustles with activity.")
     
-    def _process_repairs_day(self, world: 'World') -> None:
+    def _process_repairs_day(self) -> None:
         """Repairs - restore health."""
         heal_amount = 1
         
         # Double healing if hero is present
-        for entity in world.entities:
+        for entity in self.world.entities:
             if entity.__class__.__name__ == 'Hero' and entity.is_alive:
                 if self.occupies(entity.coordinates):
                     heal_amount = 2
@@ -128,12 +128,12 @@ class SettlementEventsMixin:
         if hasattr(self, 'think'):
             self.think("Repairs underway...")
     
-    def _find_trade_target(self, world: 'World') -> Optional[Any]:
+    def _find_trade_target(self) -> Optional[Any]:
         """Find a nearby settlement to trade with. Closer = higher probability."""
         from .settlement import Settlement
         
         candidates = []
-        for entity in world.entities:
+        for entity in self.world.entities:
             if isinstance(entity, Settlement) and entity.is_alive and entity != self:
                 distance = self.get_distance(entity.coordinates)
                 if distance <= 50:  # Max trade range
@@ -167,25 +167,27 @@ class SettlementEventsMixin:
         
         return candidates[-1][1] if candidates else None
     
-    def _send_trade_caravan(self, world: 'World', destination) -> None:
+    def _send_trade_caravan(self, destination) -> None:
         """Send a trade caravan to destination."""
         from game.entities.caravan import Caravan, CaravanMission
         
         caravan = Caravan(
+            self.world,
             coordinates=(self.coordinates[0], self.coordinates[1] + 2),
             home=self,
             destination=destination,
             mission=CaravanMission.TRADE
         )
-        world.add_entity(caravan)
+        self.world.add_entity(caravan)
     
-    def _send_blessing_caravan(self, world: 'World', destination, retrieving: bool = True) -> None:
+    def _send_blessing_caravan(self, destination, retrieving: bool = True) -> None:
         """Send caravan to retrieve or deliver blessing."""
         from game.entities.caravan import Caravan, CaravanMission
         
         mission = CaravanMission.RETRIEVE_BLESSING if retrieving else CaravanMission.DELIVER_BLESSING
         
         caravan = Caravan(
+            world,
             coordinates=(self.coordinates[0], self.coordinates[1] + 2),
             home=self,
             destination=destination,
@@ -196,39 +198,40 @@ class SettlementEventsMixin:
             caravan.blessing = True
             self.blessings -= 1
         
-        world.add_entity(caravan)
+        self.world.add_entity(caravan)
     
-    def _spawn_hero(self, world: 'World', city_born: bool = True) -> None:
+    def _spawn_hero(self, city_born: bool = True) -> None:
         """Spawn a hero at this settlement."""
         from game.entities.hero import Hero
         
         hero = Hero(
+            self.world,
             coordinates=self.coordinates,
             home=self,
             city_born=city_born
         )
-        world.add_entity(hero)
+        self.world.add_entity(hero)
         
         if hasattr(self, 'think'):
             self.think("A hero emerges from our midst!")
     
-    def on_attacked_by_dragon(self, world: 'World') -> None:
+    def on_attacked_by_dragon(self) -> None:
         """Called when attacked by a dragon."""
         self.days_since_attack = 0
     
-    def check_spire_creation(self, world: 'World') -> bool:
+    def check_spire_creation(self) -> bool:
         """Check if city should create a spire. Returns True if created."""
         if self.__class__.__name__ != 'City':
             return False
         
         # Need 10 blessings and previous day was market day
         if self.blessings >= 10 and self.current_event == SettlementEvent.MARKET_DAY:
-            self._create_spire(world)
+            self._create_spire()
             return True
         
         return False
     
-    def _create_spire(self, world: 'World') -> None:
+    def _create_spire(self) -> None:
         """Create a spire near this city."""
         from game.entities.spire import Spire
         
@@ -236,11 +239,11 @@ class SettlementEventsMixin:
         spire_x = self.coordinates[0] + 3
         spire_y = self.coordinates[1]
         
-        spire = Spire((spire_x, spire_y), self)
+        spire = Spire(self.world, (spire_x, spire_y), self)
         self.spire = spire
         self.blessings -= 10
         
-        world.add_entity(spire)
+        self.world.add_entity(spire)
         
         if hasattr(self, 'think'):
             self.think("A golden spire rises to the heavens!")

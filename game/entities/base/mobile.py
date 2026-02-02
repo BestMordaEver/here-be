@@ -17,13 +17,14 @@ class Mobile(Entity):
 
     def __init__(
         self,
+        world: 'World',
         color: str,
         character: str,
         coordinates: Coordinates,
         destination=None,
         loiter: int = 0  # Update cycles to skip between moves (0 = fastest)
     ):
-        super().__init__(color, character, coordinates)
+        super().__init__(world, color, character, coordinates)
         self.state = "created"
         self.destination: Optional[Coordinates] = destination
         self.target_entity = None  # The entity we're moving toward (if any)
@@ -32,7 +33,7 @@ class Mobile(Entity):
         self.loiter = loiter  # Cycles to wait between moves
         self.loiter_counter = 0  # Current loiter countdown
     
-    def set_destination(self, destination: Coordinates, world: 'World') -> bool:
+    def set_destination(self, destination: Coordinates) -> bool:
         """
         Set a new destination and calculate path.
         
@@ -41,13 +42,13 @@ class Mobile(Entity):
         """
         self.destination = destination
         self.target_entity = None
-        self.path = self.find_path(destination, world)
+        self.path = self.find_path(destination)
         if self.path:
             self.state = "moving"
             return True
         return False
     
-    def set_target_entity(self, target, world: 'World') -> bool:
+    def set_target_entity(self, target) -> bool:
         """
         Set an entity as the target and calculate path to it.
         
@@ -56,7 +57,7 @@ class Mobile(Entity):
         """
         self.target_entity = target
         self.destination = target.coordinates
-        self.path = self.find_path(target.coordinates, world)
+        self.path = self.find_path(target.coordinates)
         if self.path:
             self.state = "moving"
             return True
@@ -83,14 +84,14 @@ class Mobile(Entity):
             return True
         return False
     
-    def is_passable(self, coordinates: Coordinates, world: 'World') -> bool:
+    def is_passable(self, coordinates: Coordinates) -> bool:
         """Check if a tile is passable. Override in subclasses for terrain restrictions."""
         return True
     
-    def find_path(self, destination: Coordinates, world: 'World', max_search: int = 5000) -> List[Coordinates]:
+    def find_path(self, destination: Coordinates, max_search: int = 5000) -> List[Coordinates]:
         """Find a path from current position to destination using A* pathfinding."""
 
-        if not self.is_passable(destination, world):
+        if not self.is_passable(destination):
             return []
         
         def heuristic(pos: Coordinates) -> float:
@@ -134,7 +135,7 @@ class Mobile(Entity):
                     
                     neighbor = (current[0] + dx, current[1] + dy)
                     
-                    if neighbor in visited or not self.is_passable(neighbor, world):
+                    if neighbor in visited or not self.is_passable(neighbor):
                         continue
                     
                     # Cost: diagonal moves cost sqrt(2) ≈ 1.414, cardinal moves cost 1
@@ -152,7 +153,7 @@ class Mobile(Entity):
         
         return []
     
-    def update_movement(self, world: 'World') -> None:
+    def update_movement(self) -> None:
         """
         Called every 10 seconds to process movement.
         Moves one step along the current path, respecting loiter delays.
@@ -176,7 +177,7 @@ class Mobile(Entity):
                 self.destination = self.target_entity.coordinates
                 # Recalculate path if target moved significantly
                 if self.get_distance(self.destination) > 2:
-                    self.path = self.find_path(self.destination, world)
+                    self.path = self.find_path(self.destination)
         
         # Move along path
         if self.path:
@@ -189,18 +190,18 @@ class Mobile(Entity):
             # Check if arrived
             if self.coordinates == self.destination:
                 self.state = "arrived"
-                self.on_arrival(world)
+                self.on_arrival()
             elif not self.path:
                 # Path exhausted but not at destination - recalculate
-                self.path = self.find_path(self.destination, world)
+                self.path = self.find_path(self.destination)
                 if not self.path:
                     self.state = "stuck"
     
-    def on_arrival(self, world: 'World') -> None:
+    def on_arrival(self) -> None:
         """Called when entity arrives at destination. Override in subclasses."""
         pass
     
-    def check_for_encounters(self, world: 'World') -> Optional['Mobile']:
+    def check_for_encounters(self) -> Optional['Mobile']:
         """
         Check for nearby entities that should trigger an encounter.
         Override in subclasses for entity-specific encounter detection.
@@ -211,10 +212,10 @@ class Mobile(Entity):
         # Default: no encounters
         return None
     
-    def get_nearby_entities(self, world: 'World', radius: float = ENCOUNTER_RADIUS) -> List['Mobile']:
+    def get_nearby_entities(self, radius: float = ENCOUNTER_RADIUS) -> List['Mobile']:
         """Get all mobile entities within encounter radius."""
         nearby = []
-        for entity in world.entities:
+        for entity in self.world.entities:
             if entity is self:
                 continue
             if not isinstance(entity, Mobile):
@@ -225,7 +226,7 @@ class Mobile(Entity):
                 nearby.append(entity)
         return nearby
     
-    def flee_from(self, threat, world: 'World') -> bool:
+    def flee_from(self, threat) -> bool:
         """
         Start fleeing from a threat.
         
@@ -247,10 +248,10 @@ class Mobile(Entity):
         target_y = int(my + (dy / dist) * flee_distance)
         
         # Clamp to world bounds
-        target_x = max(0, min(world.WIDTH - 1, target_x))
-        target_y = max(0, min(world.HEIGHT - 1, target_y))
+        target_x = max(0, min(self.world.WIDTH - 1, target_x))
+        target_y = max(0, min(self.world.HEIGHT - 1, target_y))
         
-        return self.set_destination((target_x, target_y), world)
+        return self.set_destination((target_x, target_y))
     
     def stop_movement(self) -> None:
         """Stop current movement."""

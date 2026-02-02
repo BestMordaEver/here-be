@@ -22,24 +22,24 @@ class Aging:
         """Initialize aging attributes. Call from __init__."""
         self.age_days = 0
     
-    def get_lifespan(self, world: 'World') -> int:
+    def get_lifespan(self) -> int:
         """Get lifespan in days. Override for dynamic lifespans."""
         return getattr(self, 'LIFESPAN_DAYS', 50)
     
-    def on_old_age_death(self, world: 'World') -> None:
+    def on_old_age_death(self) -> None:
         """Called before dying of old age. Override to clear drops, etc."""
         pass
     
-    def process_aging(self, world: 'World') -> bool:
+    def process_aging(self) -> bool:
         """Increment age and check for death. Returns True if died.
         
         Call this at the start of on_dawn() implementations.
         """
         self.age_days += 1
         
-        if self.age_days >= self.get_lifespan(world):
-            self.on_old_age_death(world)
-            self.die(world, "old age")
+        if self.age_days >= self.get_lifespan():
+            self.on_old_age_death()
+            self.die("old age")
             return True
         
         return False

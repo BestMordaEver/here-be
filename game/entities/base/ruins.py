@@ -23,7 +23,7 @@ class Ruins:
         """Get ruins duration in days. Override for dynamic durations."""
         return getattr(self, 'RUINS_DURATION_DAYS', 50)
     
-    def process_ruins(self, world: 'World') -> bool:
+    def process_ruins(self) -> bool:
         """Process ruins decay. Returns True if should skip further on_dawn processing.
         
         Call this at the start of on_dawn() implementations.
@@ -34,6 +34,6 @@ class Ruins:
         
         self.days_as_ruin += 1
         if self.days_as_ruin >= self.get_ruins_duration():
-            world.remove_entity(self)
+            self.world.remove_entity(self)
         
         return True  # Skip normal on_dawn processing when dead
