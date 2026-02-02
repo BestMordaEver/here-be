@@ -1,11 +1,153 @@
 """Scheduled entity mixin - for entities that plan their day."""
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Any, TYPE_CHECKING
+from random import randint
+from typing import List, Optional, Any, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from game.world import World
     from game.world.time_system import GameTime
+
+
+# Active hours for scheduling (exclusive of dawn/dusk transition hours)
+SCHEDULE_START_HOUR = 7   # First hour available for scheduled actions
+SCHEDULE_END_HOUR = 19    # Last hour available (actions should complete before dusk)
+
+
+@dataclass
+class PlannedAction:
+    """An action to be scheduled, before hour assignment."""
+    action_type: 'ActionType'
+    target: Any = None
+    priority: int = 0
+    metadata: dict = field(default_factory=dict)
+
+
+class DayScheduler:
+    """
+    Helper class to spread actions across the active day with randomness.
+    
+    Usage:
+        scheduler = DayScheduler()
+        scheduler.add(ActionType.FEED)
+        scheduler.add(ActionType.PATROL)
+        scheduler.add(ActionType.REST)
+        scheduled_actions = scheduler.build()  # Returns list of (hour, PlannedAction)
+    """
+    
+    def __init__(
+        self,
+        start_hour: int = SCHEDULE_START_HOUR,
+        end_hour: int = SCHEDULE_END_HOUR,
+        randomness: int = 1,
+    ):
+        """
+        Initialize the day scheduler.
+        
+        Args:
+            start_hour: First hour available for scheduling (default 7)
+            end_hour: Last hour available for scheduling (default 19)
+            randomness: Maximum random hour offset (±randomness), default 1
+        """
+        self.start_hour = start_hour
+        self.end_hour = end_hour
+        self.randomness = randomness
+        self._actions: List[PlannedAction] = []
+    
+    def add(
+        self,
+        action_type: 'ActionType',
+        target: Any = None,
+        priority: int = 0,
+        **metadata
+    ) -> 'DayScheduler':
+        """
+        Add an action to be scheduled.
+        
+        Returns self for method chaining.
+        """
+        self._actions.append(PlannedAction(
+            action_type=action_type,
+            target=target,
+            priority=priority,
+            metadata=metadata
+        ))
+        return self
+    
+    def clear(self) -> 'DayScheduler':
+        """Clear all pending actions."""
+        self._actions = []
+        return self
+    
+    def build(self) -> List[Tuple[int, PlannedAction]]:
+        """
+        Assign hours to all actions, spreading them evenly with randomness.
+        
+        Returns:
+            List of (hour, PlannedAction) tuples, sorted by hour
+        """
+        if not self._actions:
+            return []
+        
+        count = len(self._actions)
+        available_hours = self.end_hour - self.start_hour + 1  # e.g., 7-19 = 13 hours
+        
+        result: List[Tuple[int, PlannedAction]] = []
+        
+        if count == 1:
+            # Single action: place in middle of day with randomness
+            base_hour = (self.start_hour + self.end_hour) // 2
+            hour = self._apply_randomness(base_hour)
+            result.append((hour, self._actions[0]))
+        else:
+            # Multiple actions: spread evenly
+            # Calculate spacing between actions
+            spacing = available_hours / count
+            
+            for i, action in enumerate(self._actions):
+                # Base hour: start + (i + 0.5) * spacing to center actions in their slots
+                base_hour = self.start_hour + int((i + 0.5) * spacing)
+                hour = self._apply_randomness(base_hour)
+                result.append((hour, action))
+        
+        # Sort by hour and resolve conflicts
+        result.sort(key=lambda x: x[0])
+        result = self._resolve_conflicts(result)
+        
+        return result
+    
+    def _apply_randomness(self, hour: int) -> int:
+        """Apply random offset to an hour, clamping to valid range."""
+        if self.randomness > 0:
+            offset = randint(-self.randomness, self.randomness)
+            hour += offset
+        return max(self.start_hour, min(self.end_hour, hour))
+    
+    def _resolve_conflicts(
+        self,
+        scheduled: List[Tuple[int, PlannedAction]]
+    ) -> List[Tuple[int, PlannedAction]]:
+        """
+        Resolve hour conflicts by shifting actions that land on the same hour.
+        """
+        if len(scheduled) <= 1:
+            return scheduled
+        
+        result = [scheduled[0]]
+        
+        for i in range(1, len(scheduled)):
+            hour, action = scheduled[i]
+            prev_hour = result[-1][0]
+            
+            # If same hour as previous, try to shift forward
+            if hour <= prev_hour:
+                hour = prev_hour + 1
+                # Clamp to end hour
+                hour = min(hour, self.end_hour)
+            
+            result.append((hour, action))
+        
+        return result
 
 
 class ActionType(Enum):
@@ -109,7 +251,7 @@ class Scheduled:
         priority: int = 0,
         **metadata
     ) -> ScheduledAction:
-        """Add an action to the schedule."""
+        """Add an action to the schedule at a specific hour."""
         action = ScheduledAction(
             hour=hour,
             action_type=action_type,
@@ -121,6 +263,99 @@ class Scheduled:
         # Keep schedule sorted by hour
         self.schedule.sort(key=lambda a: a.hour)
         return action
+    
+    def schedule_actions(
+        self,
+        actions: List[Tuple[ActionType, Any]],
+        randomness: int = 1,
+        start_hour: int = SCHEDULE_START_HOUR,
+        end_hour: int = SCHEDULE_END_HOUR,
+    ) -> List[ScheduledAction]:
+        """
+        Schedule multiple actions, spreading them evenly across the day with randomness.
+        
+        Args:
+            actions: List of (ActionType, target) tuples to schedule.
+                     Target can be None for actions that don't need one.
+            randomness: Maximum random hour offset (±randomness), default 1
+            start_hour: First hour available for scheduling (default 7)
+            end_hour: Last hour available for scheduling (default 19)
+        
+        Returns:
+            List of created ScheduledAction objects
+        
+        Example:
+            self.schedule_actions([
+                (ActionType.FEED, None),
+                (ActionType.PATROL, None),
+                (ActionType.REST, settlement),
+            ])
+            # Might produce: 8:00 FEED, 12:00 PATROL, 17:00 REST (with ±1 hour randomness)
+        """
+        scheduler = DayScheduler(
+            start_hour=start_hour,
+            end_hour=end_hour,
+            randomness=randomness
+        )
+        
+        for action_type, target in actions:
+            scheduler.add(action_type, target)
+        
+        result = []
+        for hour, planned in scheduler.build():
+            action = self.add_scheduled_action(
+                hour=hour,
+                action_type=planned.action_type,
+                target=planned.target,
+                priority=planned.priority,
+                **planned.metadata
+            )
+            result.append(action)
+        
+        return result
+    
+    def create_day_scheduler(
+        self,
+        randomness: int = 1,
+        start_hour: int = SCHEDULE_START_HOUR,
+        end_hour: int = SCHEDULE_END_HOUR,
+    ) -> DayScheduler:
+        """
+        Create a DayScheduler for more complex scheduling needs.
+        
+        Use this when you need more control over the scheduling process,
+        such as setting priorities or metadata for individual actions.
+        
+        Example:
+            scheduler = self.create_day_scheduler(randomness=2)
+            scheduler.add(ActionType.FEED, priority=10)
+            scheduler.add(ActionType.ATTACK, target=dragon, priority=5)
+            self.apply_scheduler(scheduler)
+        """
+        return DayScheduler(
+            start_hour=start_hour,
+            end_hour=end_hour,
+            randomness=randomness
+        )
+    
+    def apply_scheduler(self, scheduler: DayScheduler) -> List[ScheduledAction]:
+        """
+        Apply a DayScheduler's planned actions to this entity's schedule.
+        
+        Returns:
+            List of created ScheduledAction objects
+        """
+        result = []
+        for hour, planned in scheduler.build():
+            action = self.add_scheduled_action(
+                hour=hour,
+                action_type=planned.action_type,
+                target=planned.target,
+                priority=planned.priority,
+                **planned.metadata
+            )
+            result.append(action)
+        return result
     
     def get_action_for_hour(self, hour: int) -> Optional[ScheduledAction]:
         """Get the scheduled action for a specific hour, if any."""

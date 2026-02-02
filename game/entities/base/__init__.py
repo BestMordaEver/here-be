@@ -5,7 +5,10 @@ from .thinking import Thinking
 from .settlement import Settlement
 from .expansion import ExpansionMixin
 from .mortal import Mortal
-from .scheduled import Scheduled, ScheduledAction, ActionType, ActionState
+from .scheduled import (
+    Scheduled, ScheduledAction, ActionType, ActionState,
+    DayScheduler, PlannedAction, SCHEDULE_START_HOUR, SCHEDULE_END_HOUR
+)
 from .aging import Aging
 from .ruins import Ruins
 from .settlement_events import SettlementEventsMixin, SettlementEvent
@@ -15,5 +18,6 @@ __all__ = [
     "Entity", "Coordinates", "Mobile", "Named", "Thinking", 
     "Settlement", "ExpansionMixin", "Mortal",
     "Scheduled", "ScheduledAction", "ActionType", "ActionState",
+    "DayScheduler", "PlannedAction", "SCHEDULE_START_HOUR", "SCHEDULE_END_HOUR",
     "Aging", "Ruins", "SettlementEventsMixin", "SettlementEvent"
 ]

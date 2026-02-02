@@ -70,9 +70,11 @@ class Cattle(Mortal, Mobile, Scheduled):
         self.fleeing_from = None
         
         # Cattle just wander throughout the day
-        self.add_scheduled_action(7, ActionType.WANDER)
-        self.add_scheduled_action(11, ActionType.WANDER)
-        self.add_scheduled_action(15, ActionType.WANDER)
+        self.schedule_actions([
+            (ActionType.WANDER, None),
+            (ActionType.WANDER, None),
+            (ActionType.WANDER, None),
+        ])
     
     def on_hour(self, hour: int) -> None:
         """Process hourly updates."""

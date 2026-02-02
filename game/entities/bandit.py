@@ -135,46 +135,54 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
     
     def _schedule_lurking(self) -> None:
         """Schedule: hide in forest, wait to ambush caravans."""
+        actions = []
+        
         # Find a forest spot if not in one
         if not self.is_in_forest():
             forest = self.find_nearby_forest()
             if forest:
                 self.hiding_spot = forest
-                self.add_scheduled_action(7, ActionType.MOVE_TO, forest)
+                actions.append((ActionType.MOVE_TO, forest))
         
         # If desperate (3 days without robbery), attack village
         if self.days_since_robbery >= DAYS_WITHOUT_ROBBERY:
             village = self._find_nearby_village()
             if village:
-                self.add_scheduled_action(14, ActionType.ATTACK, village)
+                actions.append((ActionType.ATTACK, village))
                 self.think("Hunger drives me to desperate measures.")
         else:
             # Otherwise just lurk and wait
-            self.add_scheduled_action(10, ActionType.IDLE)
-            self.add_scheduled_action(15, ActionType.WANDER)
+            actions.append((ActionType.IDLE, None))
+            actions.append((ActionType.WANDER, None))
         
+        if actions:
+            self.schedule_actions(actions)
         self.think("I shall wait in ambush today.")
     
     def _schedule_seeking(self) -> None:
         """Schedule: seek out lairs, treasuries, ruins to pillage."""
+        actions = []
+        
         # Look for pillage targets
         target = self._find_pillage_target()
         
         if target:
-            self.add_scheduled_action(8, ActionType.MOVE_TO, target.coordinates)
-            self.add_scheduled_action(12, ActionType.PILLAGE, target)
+            actions.append((ActionType.MOVE_TO, target.coordinates))
+            actions.append((ActionType.PILLAGE, target))
             self.think("Treasure awaits the bold.")
         else:
             # Wander looking for opportunities
-            self.add_scheduled_action(9, ActionType.WANDER)
-            self.add_scheduled_action(14, ActionType.WANDER)
+            actions.append((ActionType.WANDER, None))
+            actions.append((ActionType.WANDER, None))
             self.think("I seek fortune today.")
         
         # If desperate, attack village
         if self.days_since_robbery >= DAYS_WITHOUT_ROBBERY:
             village = self._find_nearby_village()
             if village:
-                self.add_scheduled_action(16, ActionType.ATTACK, village)
+                actions.append((ActionType.ATTACK, village))
+        
+        self.schedule_actions(actions)
     
     def _find_nearby_village(self) -> Optional[Any]:
         """Find a village to raid."""

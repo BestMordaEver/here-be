@@ -208,49 +208,54 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
     
     def _schedule_dreary(self) -> None:
         """Dreary: tend hoard, attack if not good."""
-        self.add_scheduled_action(8, ActionType.TEND_HOARD)
+        actions = [(ActionType.TEND_HOARD, None)]
         if not self.is_good:
             target = self._find_human_target()
             if target:
-                self.add_scheduled_action(12, ActionType.ATTACK, target)
+                actions.append((ActionType.ATTACK, target))
         if self.is_evil:
             settlement = self._find_settlement_target()
             if settlement:
-                self.add_scheduled_action(15, ActionType.ATTACK, settlement)
+                actions.append((ActionType.ATTACK, settlement))
+        self.schedule_actions(actions)
     
     def _schedule_inspired(self) -> None:
         """Inspired: tend hoard, visit distant spirits."""
-        self.add_scheduled_action(8, ActionType.TEND_HOARD)
+        actions = [(ActionType.TEND_HOARD, None)]
         spirits = self._find_distant_spirits(count=2)
-        if len(spirits) >= 1:
-            self.add_scheduled_action(10, ActionType.TEND_SPIRIT, spirits[0])
-        if len(spirits) >= 2:
-            self.add_scheduled_action(14, ActionType.TEND_SPIRIT, spirits[1])
+        for spirit in spirits:
+            actions.append((ActionType.TEND_SPIRIT, spirit))
+        self.schedule_actions(actions)
     
     def _schedule_pensive(self) -> None:
         """Pensive: feed once, tend nearby spirit."""
-        self.add_scheduled_action(9, ActionType.FEED)
+        actions = [(ActionType.FEED, None)]
         spirit = self._find_nearby_spirit()
         if spirit:
-            self.add_scheduled_action(14, ActionType.TEND_SPIRIT, spirit)
+            actions.append((ActionType.TEND_SPIRIT, spirit))
+        self.schedule_actions(actions)
     
     def _schedule_hungry(self) -> None:
         """Hungry: feed, rest, feed again."""
         if self.is_anthropophage:
-            self.add_scheduled_action(8, ActionType.FEED)
-            self.add_scheduled_action(14, ActionType.REST)
+            actions = [
+                (ActionType.FEED, None),
+                (ActionType.REST, None),
+            ]
         else:
-            self.add_scheduled_action(8, ActionType.FEED)
-            self.add_scheduled_action(12, ActionType.REST)
-            self.add_scheduled_action(16, ActionType.FEED)
+            actions = [
+                (ActionType.FEED, None),
+                (ActionType.REST, None),
+                (ActionType.FEED, None),
+            ]
+        
+        # Evil dragons replace rest with attack
         if self.is_evil:
             target = self._find_human_target()
             if target:
-                for action in self.schedule:
-                    if action.action_type == ActionType.REST:
-                        action.action_type = ActionType.ATTACK
-                        action.target = target
-                        break
+                actions = [(ActionType.ATTACK, target) if a[0] == ActionType.REST else a for a in actions]
+        
+        self.schedule_actions(actions)
     
     def _schedule_covetous(self) -> None:
         """Covetous: attack settlement, steal blessing."""
@@ -258,7 +263,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         if not settlement:
             settlement = self._find_settlement_target()
         if settlement:
-            self.add_scheduled_action(10, ActionType.ATTACK, settlement)
+            self.schedule_actions([(ActionType.ATTACK, settlement)])
     
     def _find_human_target(self) -> Optional[Any]:
         """Find a human entity to attack."""

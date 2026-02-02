@@ -171,7 +171,7 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
         """Escort a caravan."""
         caravan = self._find_caravan_to_escort()
         if caravan:
-            self.add_scheduled_action(8, ActionType.ESCORT, caravan)
+            self.schedule_actions([(ActionType.ESCORT, caravan)])
         else:
             self._schedule_adventurous()
     
@@ -179,41 +179,52 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
         """Rest and protect current settlement."""
         settlement = self.get_current_settlement()
         if settlement:
-            self.add_scheduled_action(8, ActionType.REST)
-            self.add_scheduled_action(12, ActionType.PROTECT, settlement)
+            self.schedule_actions([
+                (ActionType.REST, None),
+                (ActionType.PROTECT, settlement),
+            ])
         elif self.home and self.home.is_alive:
-            self.add_scheduled_action(8, ActionType.MOVE_TO, self.home)
-            self.add_scheduled_action(14, ActionType.REST)
+            self.schedule_actions([
+                (ActionType.MOVE_TO, self.home),
+                (ActionType.REST, None),
+            ])
     
     def _schedule_adventurous(self) -> None:
         """Travel to remote settlements, explore."""
         settlements = self._find_remote_settlements(count=2)
-        if len(settlements) >= 1:
-            self.add_scheduled_action(8, ActionType.MOVE_TO, settlements[0])
-        if len(settlements) >= 2:
-            self.add_scheduled_action(14, ActionType.MOVE_TO, settlements[1])
+        actions = []
+        for settlement in settlements:
+            actions.append((ActionType.MOVE_TO, settlement))
         if random() < 0.3:
-            self.add_scheduled_action(11, ActionType.PATROL)
+            actions.append((ActionType.PATROL, None))
+        if actions:
+            self.schedule_actions(actions)
     
     def _schedule_opportunistic(self) -> None:
         """Pillage ruins/treasury or rob unguarded domain."""
         target = self._find_pillage_target()
         if target:
-            self.add_scheduled_action(9, ActionType.MOVE_TO, target)
-            self.add_scheduled_action(13, ActionType.PILLAGE, target)
+            self.schedule_actions([
+                (ActionType.MOVE_TO, target),
+                (ActionType.PILLAGE, target),
+            ])
         else:
             domain = self._find_unguarded_domain()
             if domain:
-                self.add_scheduled_action(10, ActionType.MOVE_TO, domain)
-                self.add_scheduled_action(14, ActionType.PILLAGE, domain)
+                self.schedule_actions([
+                    (ActionType.MOVE_TO, domain),
+                    (ActionType.PILLAGE, domain),
+                ])
             else:
                 self._schedule_adventurous()
     
     def _schedule_vengeful(self) -> None:
         """Hunt bandits."""
-        self.add_scheduled_action(8, ActionType.PATROL)
-        self.add_scheduled_action(12, ActionType.PATROL)
-        self.add_scheduled_action(16, ActionType.PATROL)
+        self.schedule_actions([
+            (ActionType.PATROL, None),
+            (ActionType.PATROL, None),
+            (ActionType.PATROL, None),
+        ])
     
     def _schedule_foreboding(self) -> None:
         """Lead party to attack dragon domain."""
@@ -222,15 +233,17 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
             return
         domain = self._find_known_domain()
         if domain:
-            self.add_scheduled_action(8, ActionType.MOVE_TO, domain)
-            self.add_scheduled_action(12, ActionType.ATTACK, domain)
+            self.schedule_actions([
+                (ActionType.MOVE_TO, domain),
+                (ActionType.ATTACK, domain),
+            ])
         else:
             self._schedule_adventurous()
     
     def _schedule_subservient(self) -> None:
         """Follow the party leader."""
         if self.party_leader:
-            self.add_scheduled_action(8, ActionType.ESCORT, self.party_leader)
+            self.schedule_actions([(ActionType.ESCORT, self.party_leader)])
         else:
             self.party = None
             self._schedule_adventurous()
