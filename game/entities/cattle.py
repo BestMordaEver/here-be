@@ -126,14 +126,14 @@ class Cattle(Mortal, Mobile, Scheduled):
         nearby = self.get_nearby_entities(FEAR_RADIUS)
         
         for entity in nearby:
-            if entity.__class__.__name__ in ('Dragon', 'DragonBase'):
+            if entity.__class__.__name__ == 'Dragon':
                 return entity
         
         return None
     
     def react_to_encounter(self, other: 'Mobile') -> Optional[ScheduledAction]:
         """React to dragons by fleeing."""
-        if other.__class__.__name__ in ('Dragon', 'DragonBase'):
+        if other.__class__.__name__ == 'Dragon':
             self.fleeing_from = other
             self.grazing = False
             self.flee_from(other)

@@ -39,13 +39,13 @@ def dragon_attacks_settlement(dragon, settlement, world: 'World') -> None:
                 return
     
     # Unprotected - deal damage
-    settlement.hurt(world, 1, 'dragon attack')
+    settlement.hurt(1, 'dragon attack')
     settlement.days_since_attack = 0  # Trigger mourning
     
     # Brute type reduces settlement to 1 HP
     if dragon.dragon_type == 'brute':
         if settlement.life > 1:
-            settlement.hurt(world, settlement.life - 1, 'dragon crush')
+            settlement.hurt(settlement.life - 1, 'dragon crush')
     
     # Covetous dragons steal a blessing
     from game.entities.dragon import DragonMood
@@ -78,9 +78,9 @@ def dragon_attacks_hero(dragon, hero, world: 'World') -> None:
             hero.die("dragon attack")
             return
     
-    # Fighting makes hero tired (unless vengeful)
+    # Fighting makes hero tired for the rest of the day (unless vengeful)
     if hero.mood != HeroMood.VENGEFUL:
-        hero.is_permanently_tired = True
+        hero.tired_today = True
         hero.think("The battle wears on me...")
     
     dragon.think("A hero challenges me!")
@@ -92,7 +92,7 @@ def dragon_attacks_camp(dragon, camp, world: 'World') -> None:
         camp.die("dragon")
         dragon.think("The camp is obliterated.")
     else:
-        camp.hurt(world, 1, 'dragon attack')
+        camp.hurt(1, 'dragon attack')
         dragon.think("The workers flee.")
 
 
@@ -109,13 +109,11 @@ def bandit_attacks_settlement(bandit, settlement, world: 'World') -> None:
                     entity.think("Justice served.")
                     return
                 # Other heroes drive off bandit
-                bandit.think("A hero guards this place!")
                 return
     
     # Unprotected - deal damage but no mourning
-    settlement.hurt(world, 1, 'bandit raid')
+    settlement.hurt(1, 'bandit raid')
     bandit.days_since_robbery = 0
-    bandit.think("Easy pickings.")
 
 
 def bandit_attacks_caravan(bandit, caravan, world: 'World') -> None:
@@ -129,22 +127,17 @@ def bandit_attacks_caravan(bandit, caravan, world: 'World') -> None:
                     bandit.die("hero vengeance")
                     entity.think("This one won't prey on travelers again.")
                     return
-                bandit.think("The caravan has a guardian!")
                 return
     
     # Steal blessing if caravan has one
     if caravan.blessing:
-        if bandit.trinkets < 3:  # MAX_TRINKETS
+        if bandit.blessings < 3:  # MAX_BLESSINGS
             caravan.blessing = False
-            bandit.trinkets += 1
+            bandit.blessings += 1
             bandit.days_since_robbery = 0
-            bandit.think("A fine prize!")
         else:
             # Blessing is lost
             caravan.blessing = False
-            bandit.think("No room for more... a pity.")
-    else:
-        bandit.think("Nothing of value here.")
 
 
 def hero_attacks_dragon(hero, dragon, world: 'World') -> None:
@@ -152,10 +145,10 @@ def hero_attacks_dragon(hero, dragon, world: 'World') -> None:
     if hero.party and len(hero.party) >= 4:  # PARTY_SIZE
         _party_attacks_dragon(hero.party, dragon, world)
     else:
-        # Solo hero can't kill dragon, just becomes tired
+        # Solo hero can't kill dragon, just becomes tired for the day
         from game.entities.hero import HeroMood
         if hero.mood != HeroMood.VENGEFUL:
-            hero.is_permanently_tired = True
+            hero.tired_today = True
         hero.think("I cannot face this beast alone...")
 
 
@@ -181,11 +174,11 @@ def _party_attacks_dragon(party: list, dragon, world: 'World') -> None:
             if hero.is_alive and victim in hero.acquaintances:
                 hero.acquaintances.discard(victim)
     
-    # Survivors become tired and disband
+    # Survivors become tired for the day and disband
     from game.entities.hero import HeroMood
     for hero in party:
         if hero.is_alive:
-            hero.is_permanently_tired = True
+            hero.tired_today = True
             hero.mood = HeroMood.TIRED
             hero.party = None
             hero.party_leader = None
@@ -197,7 +190,7 @@ def resolve_attack(attacker, defender, world: 'World') -> None:
     attacker_type = attacker.__class__.__name__
     defender_type = defender.__class__.__name__
     
-    if attacker_type == 'DragonBase' or attacker_type.endswith('Dragon'):
+    if attacker_type == 'Dragon':
         if defender_type == 'Caravan':
             dragon_attacks_caravan(attacker, defender, world)
         elif defender_type == 'Bandit':
@@ -216,7 +209,7 @@ def resolve_attack(attacker, defender, world: 'World') -> None:
             bandit_attacks_settlement(attacker, defender, world)
     
     elif attacker_type == 'Hero':
-        if defender_type == 'DragonBase' or defender_type.endswith('Dragon'):
+        if defender_type == 'Dragon':
             hero_attacks_dragon(attacker, defender, world)
         elif defender_type == 'Bandit':
             # Vengeful heroes kill bandits

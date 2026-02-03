@@ -25,6 +25,11 @@ TERRITORIAL_RADIUS = 12  # Radius for territorial attacks
 TEND_RADIUS_DRUID = 8    # Druids tend all spirits in this radius
 TEND_RADIUS_NORMAL = 3   # Normal dragons tend single spirit
 
+# Circling behavior
+CIRCLE_RADIUS = 6        # Distance to circle around target
+CIRCLE_STEPS = 8         # Number of steps to complete a circle (8 = octagon)
+CIRCLE_PASSES = 2        # Number of circles before attacking
+
 
 class DragonMood(Enum):
     """Dragon daily moods determining behavior."""
@@ -142,6 +147,11 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         
         # Current action tracking
         self.current_target = None  # Entity or coordinates being approached
+        
+        # Circling state
+        self.circle_target = None   # Entity being circled
+        self.circle_angle = 0.0     # Current angle around target (radians)
+        self.circle_steps_done = 0  # Steps completed in current circle
     
     def get_lifespan(self) -> int:
         """Calculate lifespan based on active spires."""
@@ -238,10 +248,17 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
     def _schedule_hungry(self) -> None:
         """Hungry: feed, rest, feed again."""
         if self.is_anthropophage:
-            actions = [
-                (ActionType.FEED, None),
-                (ActionType.REST, None),
-            ]
+            # Anthropophage attacks a settlement to feed
+            target = self._find_settlement_target()
+            if target:
+                actions = [
+                    (ActionType.ATTACK, target),
+                    (ActionType.REST, None),
+                ]
+            else:
+                actions = [
+                    (ActionType.REST, None),
+                ]
         else:
             actions = [
                 (ActionType.FEED, None),
@@ -366,9 +383,24 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
                 
         elif action.action_type == ActionType.ATTACK:
             if action.target and hasattr(action.target, 'coordinates'):
-                self.set_target_entity(action.target, self.world)
-                self.current_target = action.target
-                self.think("Destruction awaits.")
+                # Circle settlements before attacking (unless already circled)
+                target_class = action.target.__class__.__name__
+                is_settlement = target_class in ('Village', 'City', 'Camp', 'Domain')
+                already_circled = action.metadata.get('circled', False)
+                
+                if is_settlement and not already_circled:
+                    # Switch to circling first
+                    self.circle_target = action.target
+                    self.circle_angle = 0.0
+                    self.circle_steps_done = 0
+                    self._move_to_circle_position()
+                    self.current_action.action_type = ActionType.CIRCLE
+                    self.think("I circle my prey.")
+                else:
+                    # Direct attack (mobile targets or already circled)
+                    self.set_target_entity(action.target, self.world)
+                    self.current_target = action.target
+                    self.think("Destruction awaits.")
             else:
                 self.complete_current_action()
                 
@@ -382,6 +414,16 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         elif action.action_type == ActionType.REST:
             self.think("I rest and gather my strength.")
             self.complete_current_action()
+            
+        elif action.action_type == ActionType.CIRCLE:
+            if action.target and hasattr(action.target, 'coordinates'):
+                self.circle_target = action.target
+                self.circle_angle = 0.0
+                self.circle_steps_done = 0
+                self._move_to_circle_position()
+                self.think("I circle my prey.")
+            else:
+                self.complete_current_action()
     
     def _start_feeding(self) -> None:
         """Start feeding behavior based on diet."""
@@ -430,8 +472,101 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
                 return (x, y)
         return None
     
+    def _move_to_circle_position(self) -> None:
+        """Calculate and move to the next position on the circle around target."""
+        from math import cos, sin, pi
+        
+        if not self.circle_target or not hasattr(self.circle_target, 'coordinates'):
+            return
+        
+        target_x, target_y = self.circle_target.coordinates
+        
+        # Calculate position on circle
+        # Serpents do figure-8 pattern, others do simple circle
+        if self.dragon_type == 'serpent':
+            # Figure-8: use sin for x offset to create crossing pattern
+            angle = self.circle_angle
+            offset_x = CIRCLE_RADIUS * sin(2 * angle)
+            offset_y = CIRCLE_RADIUS * sin(angle)
+        else:
+            # Simple circle
+            offset_x = CIRCLE_RADIUS * cos(self.circle_angle)
+            offset_y = CIRCLE_RADIUS * sin(self.circle_angle)
+        
+        dest_x = int(target_x + offset_x)
+        dest_y = int(target_y + offset_y)
+        
+        # Clamp to world bounds
+        dest_x = max(0, min(self.world.WIDTH - 1, dest_x))
+        dest_y = max(0, min(self.world.HEIGHT - 1, dest_y))
+        
+        self.set_destination((dest_x, dest_y), self.world)
+    
+    def _update_circling(self) -> None:
+        """Update circling movement around target."""
+        from math import pi
+        
+        if not self.circle_target:
+            self.complete_current_action()
+            return
+        
+        # Check if target is still alive
+        if hasattr(self.circle_target, 'is_alive') and not self.circle_target.is_alive:
+            self.circle_target = None
+            self.complete_current_action()
+            return
+        
+        # If we're still moving to a circle position, continue
+        if self.state == "moving" and self.destination:
+            if self.dragon_type != 'blade' and self.should_skip_movement():
+                return
+            self._bresenham_move()
+            if self.coordinates == self.destination:
+                self.state = "arrived"
+        
+        # If arrived at circle position, move to next
+        if self.state == "arrived" or self.state == "created":
+            self.circle_steps_done += 1
+            
+            # Check if we've completed enough circles
+            total_steps_needed = CIRCLE_STEPS * CIRCLE_PASSES
+            if self.circle_steps_done >= total_steps_needed:
+                # Done circling, now attack
+                self._complete_circling()
+                return
+            
+            # Advance angle and move to next position
+            self.circle_angle += (2 * pi) / CIRCLE_STEPS
+            self._move_to_circle_position()
+    
+    def _complete_circling(self) -> None:
+        """Complete circling and transition to attack."""
+        target = self.circle_target
+        self.circle_target = None
+        self.circle_steps_done = 0
+        self.circle_angle = 0.0
+        
+        self.complete_current_action()
+        
+        # Automatically start attack on the circled target
+        if target and hasattr(target, 'is_alive') and target.is_alive:
+            attack_action = ScheduledAction(
+                hour=self.world.time.current_hour,
+                action_type=ActionType.ATTACK,
+                target=target,
+                priority=10,
+                metadata={'circled': True}  # Mark as already circled
+            )
+            self.start_action(attack_action)
+            self._execute_action_start(attack_action)
+    
     def update_movement(self) -> None:
         """Process movement using Bresenham-style approach."""
+        # Handle circling movement separately
+        if self.current_action and self.current_action.action_type == ActionType.CIRCLE:
+            self._update_circling()
+            return
+        
         if self.state != "moving" or not self.destination:
             return
 
@@ -573,9 +708,16 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
                         if other.__class__.__name__ == 'Bandit':
                             return other  # Return the threat to deal with
         
-        # Territorial dragons attack nearby humans
+        # Territorial dragons attack nearby humans when near their domain
         if self.is_territorial and self.domain:
             if self.get_distance(self.domain.coordinates) <= TERRITORIAL_RADIUS:
+                for entity in nearby:
+                    if entity.__class__.__name__ in ('Hero', 'Caravan', 'Bandit'):
+                        return entity
+        
+        # Evil dragons attack humans near spirits they are tending
+        if self.is_evil and self.current_action:
+            if self.current_action.action_type == ActionType.TEND_SPIRIT:
                 for entity in nearby:
                     if entity.__class__.__name__ in ('Hero', 'Caravan', 'Bandit'):
                         return entity
@@ -584,29 +726,50 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
     
     def react_to_encounter(self, other: 'Mobile') -> Optional[ScheduledAction]:
         """React to an encountered entity."""
-        # Scare bandits away
+        # Scare bandits away (unless we want to attack them)
         if other.__class__.__name__ == 'Bandit':
-            self.think("A bandit flees before me.")
-            return None  # No action needed, bandit will flee
+            if not self.is_territorial and not self.is_evil:
+                self.think("A bandit flees before me.")
+                return None  # No action needed, bandit will flee
         
-        # Good dragons protect
+        # Good dragons protect humans from bandits
         if self.is_good and other.__class__.__name__ == 'Bandit':
+            self.think("I shall protect the innocent.")
             return ScheduledAction(
                 hour=self.world.time.current_hour,
                 action_type=ActionType.ATTACK,
                 target=other,
-                priority=10
+                priority=10,
+                metadata={'circled': True}  # Skip circling for reactive attacks
             )
         
-        # Territorial attack
-        if self.is_territorial:
-            if other.__class__.__name__ in ('Hero', 'Caravan'):
-                return ScheduledAction(
-                    hour=self.world.time.current_hour,
-                    action_type=ActionType.ATTACK,
-                    target=other,
-                    priority=10
-                )
+        # Territorial attack - when near domain
+        if self.is_territorial and self.domain:
+            if self.get_distance(self.domain.coordinates) <= TERRITORIAL_RADIUS:
+                if other.__class__.__name__ in ('Hero', 'Caravan', 'Bandit'):
+                    self.think("Intruders in my territory!")
+                    return ScheduledAction(
+                        hour=self.world.time.current_hour,
+                        action_type=ActionType.ATTACK,
+                        target=other,
+                        priority=10,
+                        metadata={'circled': True}
+                    )
+        
+        # Evil dragons attack humans near spirits they tend
+        if self.is_evil and self.current_action:
+            if self.current_action.action_type == ActionType.TEND_SPIRIT:
+                if other.__class__.__name__ in ('Hero', 'Caravan', 'Bandit'):
+                    self.think("You dare approach while I commune with the spirit?")
+                    return ScheduledAction(
+                        hour=self.world.time.current_hour,
+                        action_type=ActionType.ATTACK,
+                        target=other,
+                        priority=10,
+                        metadata={'circled': True}
+                    )
+        
+        return None
         
         return None
     

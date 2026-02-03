@@ -68,7 +68,7 @@ class Settlement(Entity, Thinking):
         
         # Create caravan at settlement's southern gate
         caravan = Caravan(
-            world,
+            self.world,
             coordinates=(self.coordinates[0], self.coordinates[1] + 2),
             home=self,
             destination=destination,

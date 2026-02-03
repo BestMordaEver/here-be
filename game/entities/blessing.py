@@ -16,7 +16,7 @@ class Blessing(Entity):
     
     Blessings can be picked up by:
     - Heroes (up to 3)
-    - Bandits (up to 3, called "trinkets")
+    - Bandits (up to 3)
     - Caravans (1 at a time)
     """
     

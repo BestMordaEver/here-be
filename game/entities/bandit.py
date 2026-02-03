@@ -3,7 +3,7 @@ from enum import Enum
 from random import random, choice
 from typing import TYPE_CHECKING, Dict, Any, List, Optional
 
-from .base import Coordinates, Mobile, Thinking, Mortal, Settlement, Scheduled, ActionType, ScheduledAction, Aging
+from .base import Coordinates, Mobile, Mortal, Settlement, Scheduled, ActionType, ScheduledAction, Aging
 
 if TYPE_CHECKING:
     from game.world import World
@@ -15,7 +15,7 @@ MELEE_RANGE = 2
 FOREST_SEARCH_RADIUS = 20
 FEAR_RADIUS = 10           # Distance at which dragons/heroes are noticed
 DAYS_WITHOUT_ROBBERY = 3   # Days without robbing before attacking villages
-MAX_TRINKETS = 3           # Max blessings carried
+MAX_BLESSINGS = 3          # Max blessings carried
 
 
 class BanditBehavior(Enum):
@@ -24,19 +24,18 @@ class BanditBehavior(Enum):
     SEEKING = "seeking"     # Seek lairs, treasuries, ruins to pillage
 
 
-class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
+class Bandit(Mortal, Mobile, Scheduled, Aging):
     """Bandits that ambush caravans and pillage ruins."""
     
     LIFESPAN_DAYS = 50  # Bandit dies after this many days (same as heroes)
 
     def __init__(self, world: 'World', coordinates: Coordinates):
         Mobile.__init__(self, world, "#960000", 'Ω', coordinates, loiter=1)  # Bandits skip 1 cycle
-        Thinking.__init__(self, intent="lurking")
         Scheduled.__init__(self)
         self.init_aging()
         
         self.behavior = BanditBehavior.LURKING
-        self.trinkets = 0  # Stolen blessings (max 3)
+        self.blessings = 0  # Stolen blessings (max 3)
         self.days_since_robbery = 0
         self.hiding_spot: Optional[Coordinates] = None
         self.fleeing_from = None  # Entity we're fleeing from
@@ -94,16 +93,16 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         return best_coord
     
     def on_old_age_death(self) -> None:
-        """Clear trinkets before dying of old age so nothing drops."""
-        self.trinkets = 0
+        """Clear blessings before dying of old age so nothing drops."""
+        self.blessings = 0
     
     def die(self, reason: str) -> None:
-        """Handle bandit death - drop trinkets as blessings."""
-        # Drop trinkets (already 0 if old age via on_old_age_death)
-        if self.trinkets > 0:
+        """Handle bandit death - drop blessings."""
+        # Drop blessings (already 0 if old age via on_old_age_death)
+        if self.blessings > 0:
             from .blessing import drop_blessing
-            drop_blessing(self.world, self.coordinates, self.trinkets)
-            self.trinkets = 0
+            drop_blessing(self.world, self.coordinates, self.blessings)
+            self.blessings = 0
         
         super().die(reason)
     
@@ -149,7 +148,6 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
             village = self._find_nearby_village()
             if village:
                 actions.append((ActionType.ATTACK, village))
-                self.think("Hunger drives me to desperate measures.")
         else:
             # Otherwise just lurk and wait
             actions.append((ActionType.IDLE, None))
@@ -157,7 +155,6 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         
         if actions:
             self.schedule_actions(actions)
-        self.think("I shall wait in ambush today.")
     
     def _schedule_seeking(self) -> None:
         """Schedule: seek out lairs, treasuries, ruins to pillage."""
@@ -169,12 +166,10 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         if target:
             actions.append((ActionType.MOVE_TO, target.coordinates))
             actions.append((ActionType.PILLAGE, target))
-            self.think("Treasure awaits the bold.")
         else:
             # Wander looking for opportunities
             actions.append((ActionType.WANDER, None))
             actions.append((ActionType.WANDER, None))
-            self.think("I seek fortune today.")
         
         # If desperate, attack village
         if self.days_since_robbery >= DAYS_WITHOUT_ROBBERY:
@@ -244,7 +239,6 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
                 )
                 self.interrupt_for_encounter(attack)
                 self.set_target_entity(caravan)
-                self.think("A caravan! Perfect prey.")
                 return
         
         # Check for scheduled action
@@ -324,11 +318,10 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         
         # Steal blessings/treasure
         if hasattr(target, 'treasure') and target.treasure > 0:
-            take = min(MAX_TRINKETS - self.trinkets, target.treasure)
-            self.trinkets += take
+            take = min(MAX_BLESSINGS - self.blessings, target.treasure)
+            self.blessings += take
             target.treasure -= take
             self.days_since_robbery = 0
-            self.think(f"Pillaged {take} blessings!")
         
         self.complete_current_action()
     
@@ -338,7 +331,7 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         
         for entity in nearby:
             # Fear dragons
-            if entity.__class__.__name__ in ('Dragon', 'DragonBase'):
+            if entity.__class__.__name__ == 'Dragon':
                 return entity
             
             # Fear vengeful heroes
@@ -350,11 +343,10 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
     
     def react_to_encounter(self, other: 'Mobile') -> Optional[ScheduledAction]:
         """React to encounters - flee from dragons and heroes."""
-        if other.__class__.__name__ in ('Dragon', 'DragonBase'):
+        if other.__class__.__name__ == 'Dragon':
             # Flee from dragon
             self.fleeing_from = other
             self.flee_from(other)
-            self.think("A dragon! I must flee!")
             return ScheduledAction(
                 hour=self.world.time.current_hour,
                 action_type=ActionType.FLEE,
@@ -367,7 +359,6 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
                 # Try to flee from vengeful hero
                 self.fleeing_from = other
                 self.flee_from(other)
-                self.think("A vengeful hero! Run!")
                 return ScheduledAction(
                     hour=self.world.time.current_hour,
                     action_type=ActionType.FLEE,
@@ -382,20 +373,19 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         super().update_movement()
         
         # Try to pick up blessings at current location
-        if self.trinkets < MAX_TRINKETS:
+        if self.blessings < MAX_BLESSINGS:
             self._try_pickup_blessings()
     
     def _try_pickup_blessings(self) -> None:
-        """Pick up dropped blessings at current location as trinkets."""
+        """Pick up dropped blessings at current location."""
         from .blessing import Blessing
         
         for entity in self.world.entities:
             if isinstance(entity, Blessing) and entity.coordinates == self.coordinates:
-                can_take = MAX_TRINKETS - self.trinkets
+                can_take = MAX_BLESSINGS - self.blessings
                 taken = entity.take(can_take)
                 if taken > 0:
-                    self.trinkets += taken
-                    self.think(f"Found {taken} shiny trinket{'s' if taken > 1 else ''}!")
+                    self.blessings += taken
                 break
     
     def serialize(self) -> Dict[str, Any]:
@@ -403,7 +393,7 @@ class Bandit(Mortal, Mobile, Thinking, Scheduled, Aging):
         data = super().serialize()
         data.update({
             "behavior": self.behavior.value,
-            "trinkets": self.trinkets,
+            "blessings": self.blessings,
             "days_since_robbery": self.days_since_robbery,
             "schedule": self.get_schedule_summary(),
         })

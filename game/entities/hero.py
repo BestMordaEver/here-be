@@ -49,6 +49,7 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
         self.mood = HeroMood.ADVENTUROUS
         self.consecutive_active_days = 0  # Days without being tired
         self.is_permanently_tired = False
+        self.tired_today = False  # Tired for the rest of the day (from combat)
         
         # Party management
         self.party: Optional[List['Hero']] = None
@@ -92,6 +93,10 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
     
     def determine_mood(self) -> HeroMood:
         """Determine today's mood based on conditions."""
+        # Tired for the rest of the day from combat
+        if self.tired_today:
+            return HeroMood.TIRED
+        
         # Permanently tired after 48 days
         if self.is_permanently_tired or self.age_days >= TIRED_AFTER_DAYS:
             self.is_permanently_tired = True
@@ -176,14 +181,29 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
             self._schedule_adventurous()
     
     def _schedule_tired(self) -> None:
-        """Rest and protect current settlement."""
+        """Rest and protect current settlement, or travel to market day."""
+        from .base.settlement_events import SettlementEvent
+        
         settlement = self.get_current_settlement()
         if settlement:
             self.schedule_actions([
                 (ActionType.REST, None),
                 (ActionType.PROTECT, settlement),
             ])
-        elif self.home and self.home.is_alive:
+            return
+        
+        # Check for nearby market day (tired heroes are attracted to markets)
+        market_settlement = self._find_market_day_settlement()
+        if market_settlement:
+            self.schedule_actions([
+                (ActionType.MOVE_TO, market_settlement),
+                (ActionType.REST, None),
+            ])
+            self.think("I hear there's a market today...")
+            return
+        
+        # Otherwise, head home
+        if self.home and self.home.is_alive:
             self.schedule_actions([
                 (ActionType.MOVE_TO, self.home),
                 (ActionType.REST, None),
@@ -257,16 +277,42 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
         return None
     
     def _find_remote_settlements(self, count: int = 2) -> List[Settlement]:
-        """Find distant settlements to visit."""
+        """Find distant settlements to visit, prioritizing market days."""
+        from .base.settlement_events import SettlementEvent
+        
         settlements = []
         for entity in self.world.entities:
             if isinstance(entity, Settlement) and entity.is_alive:
                 dist = self.get_distance(entity.coordinates)
                 if dist > 20:  # Remote = more than 20 tiles away
-                    settlements.append((dist, entity))
+                    # Check if market day (higher priority)
+                    has_market = (
+                        hasattr(entity, 'current_event') and 
+                        entity.current_event == SettlementEvent.MARKET_DAY
+                    )
+                    # Sort key: market day first, then by distance (reversed)
+                    priority = (0 if has_market else 1, -dist)
+                    settlements.append((priority, entity))
         
-        settlements.sort(key=lambda x: x[0], reverse=True)
+        settlements.sort(key=lambda x: x[0])
         return [s[1] for s in settlements[:count]]
+    
+    def _find_market_day_settlement(self) -> Optional[Settlement]:
+        """Find a nearby settlement with a market day."""
+        from .base.settlement_events import SettlementEvent
+        
+        closest = None
+        closest_dist = float('inf')
+        
+        for entity in self.world.entities:
+            if isinstance(entity, Settlement) and entity.is_alive:
+                if hasattr(entity, 'current_event') and entity.current_event == SettlementEvent.MARKET_DAY:
+                    dist = self.get_distance(entity.coordinates)
+                    if dist < closest_dist:
+                        closest = entity
+                        closest_dist = dist
+        
+        return closest
     
     def _find_pillage_target(self) -> Optional[Any]:
         """Find ruins or treasury to pillage."""
@@ -371,7 +417,7 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
         # Try to form party if adventurous and see dragons
         if self.mood == HeroMood.ADVENTUROUS and not self.party:
             for entity in self.world.entities:
-                if entity.__class__.__name__ in ('Dragon', 'DragonBase', 'Domain'):
+                if entity.__class__.__name__ in ('Dragon', 'Domain'):
                     if self.get_distance(entity.coordinates) <= PATROL_RANGE:
                         self.known_domains.add(entity.coordinates)
                         self.days_domain_known[entity.coordinates] = 0
@@ -522,6 +568,7 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
     def on_dawn(self) -> None:
         """Dawn: age, check death, build schedule."""
         self.is_sleeping = False
+        self.tired_today = False  # Reset daily combat tiredness
         
         if self.process_aging():
             return
