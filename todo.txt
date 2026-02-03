@@ -60,9 +60,9 @@
   - if not protected - occurs after being attacked by a dragon ➕
   - rarely occurs naturally ➕
   - doesn't send caravans ➕
-* event - market day 〰
+* event - market day ➕
   - occurs every five days, unless mourning is forced ➕
-  - attracts heroes ❌
+  - attracts heroes ➕
   - neighbouring settlements may send a caravan ❌
   - if city - may occasionally spawn a hero ➕
 * event - the repairs 〰
@@ -98,7 +98,7 @@
 * don't drop trinkets when dying of old age ➕
 * alternate daily between hiding in forests to ambush caravans, and seeking lairs, treasuries and ruins to pillage 〰
 * when attacking caravans - halt delivery, steal blessing ➕
-* attack nearby villages if haven't robbed or pillaged in 3 days ❌
+* attack nearby villages if haven't robbed or pillaged in 3 days ➕
 * carry up to 3 stolen blessings as trinkets until death ➕
 * if stealing blessings when already having 3, the newly stolen blessings are permanently lost ❌
 * fear dragons ❌
@@ -162,14 +162,15 @@
 * type determines symbol/rotation: serpent, brute, blade, druid, midas ➕
 * domain determines color: aquatic (#004080), mountain (#808080), verdant (#008000), flame (#800000) ➕
 * Bresenham-style line movement with error accumulation ➕
-* circle around their target ❌
+* circle around their target ➕
 * age and die after 20 days + 5 days per existing spire (Aging mixin with dynamic lifespan) ➕
 * carnivores feed on cattle or fish ➕
 * herbivores occupy grassland to graze ➕
 * greed don't feed ➕
 * anthropophages seek out people to eat ➕
-* serpents circle targets in an 8 shape and disorient everyone in a radius when not fighting ❌
-* blades ignore diagonal movement penalty and can't be defended against ❌
+* serpents circle targets in an 8 shape and disorient everyone in a radius when not fighting 〰
+* blades ignore diagonal movement penalty 〰
+  - can't be defended against ❌
 * brutes reduce settlement health to 1 after a single attack, and immediately destroy camps ➕
 * druids tend to all spirits in radius 8 rather than single target ➕
 * midas can accumulate up to 10 blessings in the domain ➕
@@ -197,9 +198,9 @@
 * mood - covetous ➕
   - attacks a settlement and steals a blessing ➕
   - if good - becomes inspired instead ➕
-* when territorial dragons are near their domain, they always attack nearby humans ❌
-* a good dragon rushes to protect nearby humans that are attacked ❌
-* an evil dragon attacks humans that are near the spirit the dragon currently tends ❌
+* when territorial dragons are near their domain, they always attack nearby humans ➕
+* a good dragon rushes to protect nearby humans that are attacked ➕
+* an evil dragon attacks humans that are near the spirit the dragon currently tends ➕
 * after death domain becomes pillage-able treasury ➕
 
 - blessing  〰
