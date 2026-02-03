@@ -6,6 +6,7 @@ from game.entities import Spirit, Village, Settlement
 
 if TYPE_CHECKING:
 	from . import World
+	from game.entities.city import City
 
 
 # Spirit generation constants
@@ -18,11 +19,8 @@ KMEANS_ITERATIONS = 10  # K-means clustering iterations
 # Village/City spawn constants
 VILLAGE_MIN_SETTLEMENT_DISTANCE = 20  # Min distance between settlements for village
 CITY_MIN_SETTLEMENT_DISTANCE = 30  # Min distance between settlements for city
-CITY_SPAWN_ATTEMPTS = 50  # Attempts to find valid city location
+SETTLEMENT_SPAWN_ATTEMPTS = 50  # Attempts to find valid city location
 CATTLE_SPAWN_ATTEMPTS = 10  # Attempts to find valid cattle location
-
-# City starting blessings
-CITY_STARTING_BLESSINGS = 10  # Enough to spawn spire immediately
 
 
 def find_resource_nodes(world: 'World') -> dict[str, List[List[Tuple[int, int]]]]:
@@ -251,31 +249,26 @@ def generate_spirits(world: 'World') -> None:
 					world.add_entity(spirit)
 
 
-def check_village_spawn_area(world: 'World', center_x: int, center_y: int) -> bool:
+def check_settlement_spawn_area(world: 'World', center_x: int, center_y: int, margin: int) -> bool:
 	"""
-	Check if a 7x7 area around the given center is all plains biome and unoccupied.
-	Village center will be at (center_x, center_y).
+	Check if an area around the given center is all plains biome and unoccupied.
+	The area size is (2*margin + 1) x (2*margin + 1).
 	Returns True if spawn is valid, False otherwise.
 	"""
-	# Check if 7x7 area is within bounds
-	if center_x < 3 or center_x >= world.WIDTH - 3:
+	# Check if area is within bounds
+	if center_x < margin or center_x >= world.WIDTH - margin:
 		return False
-	if center_y < 3 or center_y >= world.HEIGHT - 3:
+	if center_y < margin or center_y >= world.HEIGHT - margin:
 		return False
 	
-	# Check if entire 7x7 area is plains biome
-	for dy in range(-3, 3):
-		for dx in range(-3, 3):
+	# Check if entire area is plains biome and unoccupied
+	for dy in range(-margin, margin + 1):
+		for dx in range(-margin, margin + 1):
 			x, y = center_x + dx, center_y + dy
 			height = world.height_map[y][x]
 			biome = world.get_biome_from_height(height)
-			if biome != 'field':  # 'field' is the plains biome
+			if biome != 'field':
 				return False
-	
-	# Check if any entity occupies this 7x7 area
-	for dy in range(-3, 3):
-		for dx in range(-3, 3):
-			x, y = center_x + dx, center_y + dy
 			if world.get_entities_at((x, y)):
 				return False
 	
@@ -309,28 +302,47 @@ def generate_village_name() -> str:
 	return f"{random.choice(prefixes)}{random.choice(suffixes)}"
 
 
-def attempt_spawn_village(world: 'World') -> bool:
+def attempt_spawn_settlement(world: 'World', settlement_type: str = 'village') -> 'Settlement | None':
 	"""
-	Attempt to spawn a single village at a random location.
-	Returns True if successful, False if spawn failed.
+	Attempt to spawn a settlement at a random location.
+	Returns the settlement if successful, None if spawn failed.
+	
+	Args:
+		world: The world to spawn in
+		settlement_type: 'village' or 'city'
 	"""
-
-	x = random.randint(0, world.WIDTH - 1)
-	y = random.randint(0, world.HEIGHT - 1)
+	from game.entities import City, Village
 	
-	# Check if far enough from settlements
-	if not check_settlement_distance(world, x, y, min_distance=VILLAGE_MIN_SETTLEMENT_DISTANCE):
-		return False
+	# Configuration based on settlement type
+	if settlement_type == 'city':
+		margin = 5  # 11x11 area
+		min_distance = CITY_MIN_SETTLEMENT_DISTANCE
+		settlement_class = City
+	else:
+		margin = 3  # 7x7 area
+		min_distance = VILLAGE_MIN_SETTLEMENT_DISTANCE
+		settlement_class = Village
 	
-	# Check if 7x7 area is valid
-	if not check_village_spawn_area(world, x, y):
-		return False
+	# Try multiple times to find a valid location
+	for _ in range(SETTLEMENT_SPAWN_ATTEMPTS):
+		x = random.randint(0, world.WIDTH - 1)
+		y = random.randint(0, world.HEIGHT - 1)
+		
+		# Check if far enough from other settlements
+		if not check_settlement_distance(world, x, y, min_distance=min_distance):
+			continue
+		
+		# Check if area is valid plains
+		if not check_settlement_spawn_area(world, x, y, margin):
+			continue
+		
+		# Spawn successful - create settlement
+		name = generate_village_name()
+		settlement = settlement_class(world, name, (x, y))
+		world.add_entity(settlement)
+		return settlement
 	
-	# Spawn successful - create village
-	name = generate_village_name()
-	village = Village(world, name, (x, y))
-	world.add_entity(village)
-	return True
+	return None
 
 
 # Cattle spawning constants
@@ -373,53 +385,3 @@ def attempt_spawn_cattle(world: 'World') -> bool:
 	return False
 
 
-def check_city_spawn_area(world: 'World', center_x: int, center_y: int) -> bool:
-	"""
-	Check if an 11x11 area around the given center is all plains biome.
-	City center will be at (center_x, center_y). City is 5x5 so we need extra margin.
-	Returns True if spawn is valid, False otherwise.
-	"""
-	# Check if 11x11 area is within bounds
-	if center_x < 5 or center_x >= world.WIDTH - 5:
-		return False
-	if center_y < 5 or center_y >= world.HEIGHT - 5:
-		return False
-	
-	# Check if entire 11x11 area is plains biome
-	for dy in range(-5, 6):
-		for dx in range(-5, 6):
-			x, y = center_x + dx, center_y + dy
-			height = world.height_map[y][x]
-			biome = world.get_biome_from_height(height)
-			if biome != 'field':
-				return False
-	
-	return True
-
-
-def attempt_spawn_city(world: 'World') -> bool:
-	"""Spawn the initial city at a random location.
-	This is the first settlement, so no proximity checks needed.
-	City starts with resources to immediately spawn a spire and send worker caravans.
-	Returns True if successful, False if spawn failed.
-	"""
-	from game.entities import City
-	
-	# Try multiple times to find a valid location
-	for _ in range(CITY_SPAWN_ATTEMPTS):
-		x = random.randint(0, world.WIDTH - 1)
-		y = random.randint(0, world.HEIGHT - 1)
-		
-		# Check if 11x11 area is valid plains
-		if not check_city_spawn_area(world, x, y):
-			continue
-		
-		# Spawn successful - create city with starting blessings
-		name = generate_village_name()  # Use same name generator
-		city = City(world, name, (x, y))		
-		city.blessings = CITY_STARTING_BLESSINGS
-		
-		world.add_entity(city)
-		return True
-	
-	return False

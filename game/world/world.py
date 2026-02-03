@@ -3,7 +3,7 @@ import threading
 import time
 import traceback
 from typing import List, TYPE_CHECKING
-from . import HeightMapGenerator, attempt_spawn_village, attempt_spawn_cattle, generate_spirits
+from . import HeightMapGenerator, attempt_spawn_settlement, attempt_spawn_cattle, generate_spirits
 from .time_system import DayNightCycle, GameTime, TimeOfDay, DAWN_HOUR, DUSK_HOUR, NIGHT_HOUR
 
 if TYPE_CHECKING:
@@ -14,6 +14,9 @@ if TYPE_CHECKING:
 DEFAULT_REAL_SECONDS_PER_DAY = 86400.0  # Real-time (1 day = 1 day)
 DEBUG_REAL_SECONDS_PER_DAY = 120.0      # Debug mode (1 day = 2 minutes)
 MOVEMENT_UPDATE_INTERVAL = 10.0          # Seconds between movement updates
+
+# City starting blessings
+CITY_STARTING_BLESSINGS = 10  # Enough to spawn spire immediately
 
 
 class World:
@@ -47,12 +50,14 @@ class World:
         generate_spirits(self)
         
         # Spawn initial city (first settlement)
-        from .entity_gen import attempt_spawn_city
-        attempt_spawn_city(self)
+        city = attempt_spawn_settlement(self, 'city')
+        city.blessings = CITY_STARTING_BLESSINGS
+        if not city._attempt_create_spire():
+            raise RuntimeError("Failed to create starting city spire.")
         
         # Generate initial villages
         for _ in range(5):
-            attempt_spawn_village(self)
+            attempt_spawn_settlement(self, 'village')
         
         # Trigger initial dawn to build schedules
         self._trigger_dawn()
@@ -147,10 +152,14 @@ class World:
     
     def _daily_spawns(self, day: int) -> None:
         """Handle spawning that occurs at dawn."""
+        # Spawn cities every 15 days
+        if day > 1 and day % 15 == 0:
+            attempt_spawn_settlement(self, 'city')
+        
         # Spawn villages every 10 days (2 villages)
         if day > 1 and day % 10 == 0:
             for _ in range(2):
-                attempt_spawn_village(self)
+                attempt_spawn_settlement(self, 'village')
         
         # Spawn cattle once per day, with world cap of 20
         cattle_count = sum(1 for e in self.entities if e.__class__.__name__ == 'Cattle' and e.is_alive)

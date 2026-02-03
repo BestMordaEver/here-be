@@ -254,7 +254,7 @@ class City(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
             return False
         
         # Find a valid location for village (7x7 plains, no settlement distance limit for city villages)
-        from game.world import check_village_spawn_area
+        from game.world import check_settlement_spawn_area
         
         # Try locations in expanding rings from city
         x, y = self.coordinates
@@ -265,7 +265,7 @@ class City(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
                     test_x, test_y = x + dx, y + dy
                     
                     # Check if valid for village (only check spawn area, ignore settlement distance)
-                    if check_village_spawn_area(self.world, test_x, test_y):
+                    if check_settlement_spawn_area(self.world, test_x, test_y, margin=3):
                         # Valid location! Create caravan
                         from . import Caravan
                         from .caravan import CaravanMission
