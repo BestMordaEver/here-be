@@ -10,7 +10,6 @@ if TYPE_CHECKING:
 
 
 # Village constants
-RECOVERY_RATE = 1
 LAKE_BLESSING_RADIUS = 10  # Max distance to extract blessing from lake spirit
 
 # Village init constants
@@ -41,34 +40,26 @@ class Village(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
             return
         
         self.process_daily_event()
-        self._try_extract_lake_blessing()
         
-        # Natural recovery
-        if self.blessings > 0:
-            self.heal(RECOVERY_RATE)
-    
-    def _try_extract_lake_blessing(self) -> None:
-        """Try to extract a blessing from a nearby lake spirit (once per day)."""
+        # Try to extract a blessing from a nearby lake spirit (once per day)
         current_day = self.world.time.current_day
-        if current_day == self._last_blessing_day:
-            return
-        
-        # Lazy init nearby lake spirits cache
-        if self._nearby_lake_spirits is None:
-            self._nearby_lake_spirits = []
-            for entity in self.world.entities:
-                if entity.__class__.__name__ == 'Spirit' and entity.type == 'water':
-                    if self.get_distance(entity.coordinates) <= LAKE_BLESSING_RADIUS:
-                        self._nearby_lake_spirits.append(entity)
-        
-        # Try to get blessing from nearest lake spirit with one available
-        for spirit in self._nearby_lake_spirits:
-            if spirit.is_alive and spirit.has_blessing:
-                spirit.take_blessing()
-                self.blessings += 1
-                self._last_blessing_day = current_day
-                self.think(f"Received blessing from the lake spirit.")
-                return
+        if current_day != self._last_blessing_day:
+            # Lazy init nearby lake spirits cache
+            if self._nearby_lake_spirits is None:
+                self._nearby_lake_spirits = []
+                for entity in self.world.entities:
+                    if entity.__class__.__name__ == 'Spirit' and entity.type == 'water':
+                        if self.get_distance(entity.coordinates) <= LAKE_BLESSING_RADIUS:
+                            self._nearby_lake_spirits.append(entity)
+            
+            # Try to get blessing from nearest lake spirit with one available
+            for spirit in self._nearby_lake_spirits:
+                if spirit.is_alive and spirit.has_blessing:
+                    spirit.take_blessing()
+                    self.blessings += 1
+                    self._last_blessing_day = current_day
+                    self.think(f"Received blessing from the lake spirit.")
+                    break
 
     def get_max_camps(self) -> int:
         return 4  # Villages can have up to 4 camps (1 forest + 1 mountain + 2 any)

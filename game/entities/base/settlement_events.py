@@ -187,7 +187,7 @@ class SettlementEventsMixin:
         mission = CaravanMission.RETRIEVE_BLESSING if retrieving else CaravanMission.DELIVER_BLESSING
         
         caravan = Caravan(
-            world,
+            self.world,
             coordinates=(self.coordinates[0], self.coordinates[1] + 2),
             home=self,
             destination=destination,

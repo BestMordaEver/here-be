@@ -18,7 +18,6 @@ class CaravanMission(Enum):
     """Types of caravan missions."""
     TRADE = "trade"           # Exchange gossip at settlement
     SETTLE_CAMP = "settle_camp"  # Create a worker camp
-    SETTLE_VILLAGE = "settle_village"  # Create a new village
     RETRIEVE_BLESSING = "retrieve_blessing"  # Buy blessing from village
     DELIVER_BLESSING = "deliver_blessing"  # Deliver blessing to parent settlement
 
@@ -124,8 +123,6 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
             self._complete_trade()
         elif self.mission == CaravanMission.SETTLE_CAMP:
             self._complete_settle_camp()
-        elif self.mission == CaravanMission.SETTLE_VILLAGE:
-            self._complete_settle_village()
         elif self.mission == CaravanMission.RETRIEVE_BLESSING:
             self._complete_retrieve_blessing()
         elif self.mission == CaravanMission.DELIVER_BLESSING:
@@ -166,21 +163,6 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
         
         self.world.add_entity(camp)
         self.think("A new camp is established!")
-        self.die("success")
-    
-    def _complete_settle_village(self) -> None:
-        """Create a village at destination."""
-        from . import Village
-        from game.world import generate_village_name
-        
-        village = Village(self.world, generate_village_name(), self.coordinates)
-        
-        # Track village in home's subsidiary list
-        if hasattr(self.home, 'subsidiary_villages'):
-            self.home.subsidiary_villages.append(village)
-        
-        self.world.add_entity(village)
-        self.think("A new village rises!")
         self.die("success")
     
     def _complete_retrieve_blessing(self) -> None:

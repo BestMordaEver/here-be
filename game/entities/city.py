@@ -6,13 +6,12 @@ from typing import List, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from game.world import World
-    from . import Camp, Village, Caravan, Spire
+    from . import Camp, Caravan, Spire
 
 
 # City constants
 STARTING_LIFE = 1000  # City starting HP
 SPIRE_BLESSING_COST = 10  # Blessings needed to spawn spire
-HERO_BLESSING_COST = 2  # Blessings needed to spawn hero
 BLESSING_SELL_RANGE = 100  # Max distance to sell blessings to other cities
 
 
@@ -29,12 +28,9 @@ class City(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
         
         # Expansion tracking
         self.subsidiary_camps: List['Camp | Caravan'] = []
-        self.subsidiary_villages: List['Village | Caravan'] = []
-        self.created_village_for_free = False
         
-        # Spire and hero tracking
+        # Spire tracking
         self.spire: 'Spire' = None
-        self.last_hero_spawn_day = -999
         
     def get_tiles(self) -> List[Tuple[Coordinates, str, str]]:
         """Return all 5x5 tiles for the city.
@@ -150,49 +146,22 @@ class City(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
         
         # Cities with spires sell blessings to other cities without spires
         if self.spire and self.spire.is_alive and self.blessings > 1:
-            self._try_sell_blessing()
-        
-        # Natural recovery if we have blessings
-        if self.blessings > 0:
-            self.heal(2)
-    
-    def _try_sell_blessing(self) -> None:
-        """Try to sell a blessing to another city that doesn't have a spire."""
-        from .caravan import CaravanMission
-        
-        # Find cities without spires in range
-        target_cities = []
-        for entity in self.world.entities:
-            if entity.__class__.__name__ == 'City' and entity != self and entity.is_alive:
-                if entity.spire is None or not entity.spire.is_alive:
-                    distance = self.get_distance(entity.coordinates)
-                    if distance <= BLESSING_SELL_RANGE:
-                        target_cities.append((distance, entity))
-        
-        if not target_cities:
-            return
-        
-        # Sort by distance and send to closest
-        target_cities.sort(key=lambda x: x[0])
-        target = target_cities[0][1]
-        
-        self._send_blessing_caravan(self.world, target, retrieving=False)
-        self.think(f"Sending blessing to {target.name}.")
-
-    def expand_settlement(self) -> None:
-        """Attempt to expand the city by creating villages or a spire.
-        Called from on_dawn() checks - no longer cycle-based."""
-        # First priority: Create village on promotion (once, free, immediate)
-        if not self.created_village_for_free and self._attempt_create_village():
-            return
-        
-        # Second priority: Create second village when we have excess blessings
-        if len(self.subsidiary_villages) == 1 and self.blessings >= 3 and self._attempt_create_village():
-            return
-        
-        # Third priority: Create spire when blessing threshold reached
-        if self.spire is None and self.blessings >= SPIRE_BLESSING_COST:
-            self._attempt_create_spire()
+            # Find cities without spires in range
+            target_cities = []
+            for entity in self.world.entities:
+                if entity.__class__.__name__ == 'City' and entity != self and entity.is_alive:
+                    if entity.spire is None or not entity.spire.is_alive:
+                        distance = self.get_distance(entity.coordinates)
+                        if distance <= BLESSING_SELL_RANGE:
+                            target_cities.append((distance, entity))
+            
+            if target_cities:
+                # Sort by distance and send to closest
+                target_cities.sort(key=lambda x: x[0])
+                target = target_cities[0][1]
+                
+                self._send_blessing_caravan(self.world, target, retrieving=False)
+                self.think(f"Sending blessing to {target.name}.")
     
     def _attempt_create_spire(self) -> bool:
         """Attempt to create a spire near the city."""
@@ -230,62 +199,10 @@ class City(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
         return False
     
     def _spawn_hero(self, city_born: bool = True) -> None:
-        """Spawn a hero from the city. Overrides mixin to check blessing requirements."""
+        """Spawn a hero from the city."""
         from . import Hero
-        
-        # Check blessing requirement
-        if self.blessings < HERO_BLESSING_COST:
-            return
         
         # Spawn at city gate
         hero = Hero(self.world, (self.coordinates[0], self.coordinates[1] + 3), self)
         self.world.add_entity(hero)
-        
-        # Consume blessings for hero
-        self.blessings -= HERO_BLESSING_COST
-        current_day = self.world.time.get_current_time().day if hasattr(self.world, 'time') else 0
-        self.last_hero_spawn_day = current_day
 
-    
-    def _attempt_create_village(self) -> bool:
-        """Attempt to create a subsidiary village. Returns True if successful."""
-        # Check village limit (2 max)
-        if len(self.subsidiary_villages) >= 2:
-            return False
-        
-        # Find a valid location for village (7x7 plains, no settlement distance limit for city villages)
-        from game.world import check_settlement_spawn_area
-        
-        # Try locations in expanding rings from city
-        x, y = self.coordinates
-        for distance in range(10, 50):  # Start at 10, close to city
-            for dx in range(-distance, distance + 1):
-                dy_remaining = distance - abs(dx)
-                for dy in [-dy_remaining, dy_remaining] if dy_remaining != 0 else [0]:
-                    test_x, test_y = x + dx, y + dy
-                    
-                    # Check if valid for village (only check spawn area, ignore settlement distance)
-                    if check_settlement_spawn_area(self.world, test_x, test_y, margin=3):
-                        # Valid location! Create caravan
-                        from . import Caravan
-                        from .caravan import CaravanMission
-                        
-                        caravan = Caravan(
-                            self.world,
-                            coordinates=(self.coordinates[0], self.coordinates[1] + 2),
-                            home=self,
-                            destination=(test_x, test_y),
-                            mission=CaravanMission.SETTLE_VILLAGE
-                        )
-
-                        if not self.created_village_for_free:
-                            self.created_village_for_free = True
-                        
-                        self.world.add_entity(caravan)
-                        
-                        # Track the subsidiary village
-                        self.subsidiary_villages.append(caravan)
-                        
-                        return True
-        
-        return False

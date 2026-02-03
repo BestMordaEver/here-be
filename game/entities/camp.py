@@ -68,7 +68,19 @@ class Camp(Settlement, Mortal):
         
         # Send blessing to parent settlement if we have one
         if self.blessings > 0 and self.home and self.home.is_alive:
-            self._send_blessing_to_parent()
+            from .caravan import Caravan, CaravanMission
+            
+            # Create caravan to deliver blessing
+            caravan = Caravan(
+                self.world,
+                coordinates=self.coordinates,
+                home=self.home,
+                destination=self.home,
+                mission=CaravanMission.DELIVER_BLESSING
+            )
+            caravan.blessing = True
+            self.blessings -= 1
+            self.world.add_entity(caravan)
         
         # Initialize nearby spirits cache if needed
         if self.nearby_spirits is None:
@@ -90,22 +102,6 @@ class Camp(Settlement, Mortal):
                 self.blessings += 1
                 self._last_blessing_day = current_day
                 return  # Only one blessing per day
-    
-    def _send_blessing_to_parent(self) -> None:
-        """Send a caravan with blessing to parent settlement."""
-        from .caravan import Caravan, CaravanMission
-        
-        # Create caravan to deliver blessing
-        caravan = Caravan(
-            self.world,
-            coordinates=self.coordinates,
-            home=self.home,
-            destination=self.home,
-            mission=CaravanMission.DELIVER_BLESSING
-        )
-        caravan.blessing = True
-        self.blessings -= 1
-        self.world.add_entity(caravan)
     
     def update(self) -> None:
         """Camps don't need regular updates beyond dawn."""
