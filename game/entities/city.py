@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 
 # City constants
-STARTING_LIFE = 1000  # City starting HP
+STARTING_LIFE = 5  # City starting HP
 SPIRE_BLESSING_COST = 10  # Blessings needed to spawn spire
 BLESSING_SELL_RANGE = 100  # Max distance to sell blessings to other cities
 
@@ -128,6 +128,11 @@ class City(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):
 
     def get_prioritized_resource_count(self) -> int:
         return 2
+    
+    def on_pre_death(self) -> None:
+        """Called before city death - destroy spire along with it."""
+        if self.spire and self.spire.is_alive:
+            self.spire.die("city destroyed")
     
     def on_dawn(self) -> None:
         """Handle dawn event - process daily settlement event and try selling blessings."""

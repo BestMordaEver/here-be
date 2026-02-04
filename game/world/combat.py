@@ -44,10 +44,16 @@ def initiate_robbery(bandit, target, world: 'World') -> Optional['Engagement']:
     return engagement
 
 
-def initiate_combat(attacker, defender, world: 'World') -> Optional['Engagement']:
+def initiate_combat(attacker, defender, world: 'World', can_be_interrupted: bool = True) -> Optional['Engagement']:
     """
     Initiate combat between two entities.
     Actual damage is dealt at resolution (on_hour_end).
+    
+    Args:
+        attacker: Entity starting the combat
+        defender: Entity being attacked
+        world: The game world
+        can_be_interrupted: If False (e.g., blade dragons), heroes cannot protect
     
     Returns:
         The created engagement, or None if initiation failed
@@ -55,7 +61,7 @@ def initiate_combat(attacker, defender, world: 'World') -> Optional['Engagement'
     if not hasattr(attacker, 'engage'):
         return None
     
-    engagement = attacker.engage(defender, EngagementType.COMBAT)
+    engagement = attacker.engage(defender, EngagementType.COMBAT, can_be_interrupted=can_be_interrupted)
     
     # Log the initiation
     attacker_type = attacker.__class__.__name__
@@ -200,6 +206,16 @@ def resolve_combat(engagement: 'Engagement', world: 'World') -> None:
 
 def _resolve_dragon_combat(dragon, defender, defender_type: str, world: 'World') -> None:
     """Resolve dragon attacking something."""
+    from random import random
+    
+    # Fragile dragons may shed a blessing when fighting
+    if dragon.dragon_type == 'fragile' and dragon.blessings > 0:
+        if random() < 0.3:  # 30% chance to drop blessing during attack
+            from game.entities.blessing import drop_blessing
+            dragon.blessings -= 1
+            drop_blessing(world, dragon.coordinates, 1)
+            dragon.think("A piece of my hoard scatters!")
+    
     if defender_type == 'Caravan':
         dragon.think("The caravan is no more.")
         defender.die("dragon attack")
@@ -243,6 +259,15 @@ def _resolve_dragon_combat(dragon, defender, defender_type: str, world: 'World')
 def _resolve_dragon_vs_hero(dragon, hero, world: 'World') -> None:
     """Resolve dragon fighting a hero."""
     from game.entities.hero import HeroMood
+    from random import random
+    
+    # Fragile dragons may shed a blessing when fighting
+    if dragon.dragon_type == 'fragile' and dragon.blessings > 0:
+        if random() < 0.5:  # 50% chance to drop blessing
+            from game.entities.blessing import drop_blessing
+            dragon.blessings -= 1
+            drop_blessing(world, dragon.coordinates, 1)
+            dragon.think("A piece of my hoard falls away!")
     
     # Tired heroes outside settlements are killed
     if hero.mood == HeroMood.TIRED:
@@ -464,13 +489,14 @@ def resolve_pillage(engagement: 'Engagement', world: 'World') -> None:
 
 def dragon_attacks_caravan(dragon, caravan, world: 'World') -> None:
     """Dragon destroys an unprotected caravan."""
-    # Check if caravan is protected by a hero
-    for entity in world.entities:
-        if entity.__class__.__name__ == 'Hero' and entity.is_alive:
-            if entity.get_distance(caravan.coordinates) <= 3:
-                # Hero defends - combat shifts to hero
-                dragon_attacks_hero(dragon, entity, world)
-                return
+    # Check if caravan is protected by a hero (blade dragons cannot be defended against)
+    if dragon.dragon_type != 'blade':
+        for entity in world.entities:
+            if entity.__class__.__name__ == 'Hero' and entity.is_alive:
+                if entity.get_distance(caravan.coordinates) <= 3:
+                    # Hero defends - combat shifts to hero
+                    dragon_attacks_hero(dragon, entity, world)
+                    return
     
     # Unprotected - caravan destroyed
     dragon.think("The caravan is no more.")
@@ -485,13 +511,14 @@ def dragon_attacks_bandit(dragon, bandit, world: 'World') -> None:
 
 def dragon_attacks_settlement(dragon, settlement, world: 'World') -> None:
     """Dragon deals 1 damage to a settlement."""
-    # Check for hero protection
-    for entity in world.entities:
-        if entity.__class__.__name__ == 'Hero' and entity.is_alive:
-            if entity.get_distance(settlement.coordinates) <= 3:
-                # Hero defends
-                dragon_attacks_hero(dragon, entity, world)
-                return
+    # Check for hero protection (blade dragons cannot be defended against)
+    if dragon.dragon_type != 'blade':
+        for entity in world.entities:
+            if entity.__class__.__name__ == 'Hero' and entity.is_alive:
+                if entity.get_distance(settlement.coordinates) <= 3:
+                    # Hero defends
+                    dragon_attacks_hero(dragon, entity, world)
+                    return
     
     # Unprotected - deal damage
     settlement.hurt(1, 'dragon attack')

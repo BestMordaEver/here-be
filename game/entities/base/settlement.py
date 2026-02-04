@@ -53,7 +53,12 @@ class Settlement(Entity, Thinking):
     
     def die(self, reason) -> None:
         """Handle settlement death/depletion. Stores blessings in ruins if applicable."""
+        # Allow subclasses to handle pre-death cleanup
+        if hasattr(self, 'on_pre_death'):
+            self.on_pre_death()
+        
         super().die(reason)
+        
         # If this settlement has the Ruins mixin, store blessings for pillaging
         if hasattr(self, 'on_become_ruins'):
             self.on_become_ruins()

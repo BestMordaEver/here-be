@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 LAKE_BLESSING_RADIUS = 10  # Max distance to extract blessing from lake spirit
 
 # Village init constants
-STARTING_LIFE = 500  # Village starting HP
+STARTING_LIFE = 3  # Village starting HP
 
 
 class Village(Settlement, ExpansionMixin, Named, SettlementEventsMixin, Ruins):

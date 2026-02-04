@@ -188,43 +188,43 @@ If still engaged when hour ends:
 * can carry up to 3 blessings that they sell off in the first city they visit ❌
 * won't take more blessings than they can carry ❌
 * have a rotation of daily moods ➕
-* mood - mercenary 〰
-  - escorts a caravan ❌
-* mood - tired 〰
-  - if not a part of a party - occurs after three consecutive non-tired days ❌
-  - protects the settlement they are in ❌
-* mood - adventurous 〰
-  - travels to two different remote settlements in a day ❌
-  - visits other settlements on the way ❌
-  - occasionally explores the area ❌
-  - remembers nearby dragon lairs ❌
-  - bands up with other heroes if any of them remember a domain ❌
-  - rushes to protect nearby caravans and settlements from attacks ❌
-* mood - opportunistic 〰
-  - occurs when a memory of a domain persists for 10 days ❌
-  - attempts to rob the domain when the dragon is missing, hero dies if caught alone ❌
-  - steals 1 blessing if successful ❌
-  - alternatively, occurs the next day after seeing ruins or treasury that hold a blessing ❌
-  - ruins and treasury pillaging takes priority over domain robbery ❌
-  - if pillaging ruins or treasury, takes all the blessings they can ❌
-* mood - vengeful 〰
-  - occurs after a hero learns that a hero they know is killed ❌
-  - travels to two different remote settlements in a day ❌
-  - ignores other settlements, but often explores the area looking for bandits ❌
-  - rushes to protect nearby caravans and settlements from attacks ❌
-* mood - foreboding 〰
-  - occurs the morning when the party is full ❌
-  - mood of the party leader as they lead the attack on the domain ❌
-* mood - subservient 〰
-  - mood of the non-leader party members ❌
-* an incomplete hero party chooses the leader at random and follows them ❌
-* the leader acts as a normal hero until a full hero party of 4 is assembled ❌
-* heroes disband after raiding the domain and become tired, not getting vengeful about their party members ❌
+* mood - mercenary ➕
+  - escorts a caravan ➕
+* mood - tired ➕
+  - if not a part of a party - occurs after three consecutive non-tired days ➕
+  - protects the settlement they are in ➕
+* mood - adventurous ➕
+  - travels to two different remote settlements in a day ➕
+  - visits other settlements on the way ➕
+  - occasionally explores the area ➕
+  - remembers nearby dragon lairs ➕
+  - bands up with other heroes if any of them remember a domain ➕
+  - rushes to protect nearby caravans and settlements from attacks ➕
+* mood - opportunistic ➕
+  - occurs when a memory of a domain persists for 10 days ➕
+  - attempts to rob the domain when the dragon is missing, hero dies if caught alone ➕
+  - steals 1 blessing if successful ➕
+  - alternatively, occurs the next day after seeing ruins or treasury that hold a blessing ➕
+  - ruins and treasury pillaging takes priority over domain robbery ➕
+  - if pillaging ruins or treasury, takes all the blessings they can ➕
+* mood - vengeful ➕
+  - occurs after a hero learns that a hero they know is killed ➕
+  - travels to two different remote settlements in a day ➕
+  - ignores other settlements, but often explores the area looking for bandits ➕
+  - rushes to protect nearby caravans and settlements from attacks ➕
+* mood - foreboding ➕
+  - occurs the morning when the party is full ➕
+  - mood of the party leader as they lead the attack on the domain ➕
+* mood - subservient ➕
+  - mood of the non-leader party members ➕
+* an incomplete hero party chooses the leader at random and follows them ➕
+* the leader acts as a normal hero until a full hero party of 4 is assembled ➕
+* heroes disband after raiding the domain and become tired, not getting vengeful about their party members ➕
 * heroes can become acquaintances after some shared activities ➕
   - spending time in the same settlement ➕
-  - protecting or escorting the same people ❌
-  - becoming party members ❌
-  - pillaging the same domain, treasury or ruins ❌
+  - protecting or escorting the same people 〰
+  - becoming party members ➕
+  - pillaging the same domain, treasury or ruins 〰
 
 - dragons 〰
 * when thinking or being talked about, use a set of pronouns defined by user (ex. he/him/his, ae/aer/aers), default it/it/its ➕
@@ -300,60 +300,60 @@ If still engaged when hour ends:
 # IMPLEMENTATION PLAN - Remaining Features
 # =============================================================================
 
-## Priority 1: Core Gameplay Fixes (Quick wins)
+## Priority 1: Core Gameplay Fixes (Quick wins) ➕
 These are simple fixes that make the existing systems work as intended:
 
-1. ❌ Settlement HP values - Change villages to 3 HP, cities to 5 HP (currently 500/1000)
-2. ❌ Spire destroyed with city - Add check in city.die() to kill spire
-3. ❌ Bandit overflow blessings lost - When stealing with 3 blessings, extras vanish
-4. ❌ Lake camps not counting toward total - Add camp_type tracking
+1. ➕ Settlement HP values - Change villages to 3 HP, cities to 5 HP
+2. ➕ Spire destroyed with city - Add check in city.die() to kill spire
+3. ➕ Bandit overflow blessings lost - Already implemented in resolve_robbery
+4. ➕ Lake camps not counting toward total - Exclude water type from camp count
 
-## Priority 2: Ruin Bandit Spawning
+## Priority 2: Ruin Bandit Spawning ➕
 Adds consequence for settlement destruction:
 
-1. ❌ Track ruin age in Ruins mixin (days_as_ruin already exists)
-2. ❌ After 2 days as ruin, spawn single bandit pack
-3. ❌ Only villages and cities spawn bandits (not camps)
+1. ➕ Track ruin age in Ruins mixin (days_as_ruin already exists)
+2. ➕ After 2 days as ruin, spawn single bandit pack
+3. ➕ Only villages and cities spawn bandits (not camps)
 
-## Priority 3: Hero Blessing Economy  
+## Priority 3: Hero Blessing Economy ➕
 Heroes need to interact with the blessing system:
 
-1. ❌ Heroes sell blessings at first city visited
-2. ❌ Track hero blessing capacity (already have MAX_BLESSINGS constant)
-3. ❌ Heroes gain blessings from pillaging (engagement exists, need behavior)
+1. ➕ Heroes sell blessings at first city visited (in on_hour when in city)
+2. ➕ Track hero blessing capacity (MAX_BLESSINGS = 3)
+3. ➕ Heroes gain blessings from pillaging (via resolve_pillage)
 
-## Priority 4: Gossip System
+## Priority 4: Dragon Type Special Abilities ➕
+Complete dragon type differentiation:
+
+1. ➕ Serpent figure-8 movement (already implemented)
+2. ➕ Blade undefendable attacks (can_be_interrupted=False)
+3. ➕ Fragile blessing drops on combat (30-50% chance)
+4. ➕ Dragon spawn location validation (VALID_SPAWN_TERRAIN, find_valid_spawn_location)
+
+## Priority 5: Hero Mood Behaviors (Deep work) ➕
+Deep hero personality implementation:
+
+1. ➕ Tired mood - force rest after 3 non-tired days, protect settlement
+2. ➕ Mercenary mood - escort caravans
+3. ➕ Adventurous mood - explore, remember lairs, visit settlements
+4. ➕ Opportunistic mood - pillage when opportunity arises
+5. ➕ Vengeful mood - hunt bandits after acquaintance death
+
+## Priority 6: Hero Party System ➕
+Multi-hero dragon raids:
+
+1. ➕ Track hero parties and party leader
+2. ➕ Foreboding/subservient moods
+3. ➕ Party formation when 4 heroes remember same domain
+4. ➕ Party raid mechanics
+
+## Priority 7: Gossip System
 Information flow between entities:
 
 1. ❌ Add gossip/memory system to Thinking mixin
 2. ❌ Caravans share news at trade destinations
 3. ❌ Heroes share news in settlements
 4. ❌ Cities react to gossip about village blessings
-
-## Priority 5: Hero Mood Behaviors (Deep work)
-Deep hero personality implementation:
-
-1. ❌ Tired mood - force rest after 3 non-tired days, protect settlement
-2. ❌ Mercenary mood - escort caravans
-3. ❌ Adventurous mood - explore, remember lairs, visit settlements
-4. ❌ Opportunistic mood - pillage when opportunity arises
-5. ❌ Vengeful mood - hunt bandits after acquaintance death
-
-## Priority 6: Hero Party System
-Multi-hero dragon raids:
-
-1. ❌ Track hero parties and party leader
-2. ❌ Foreboding/subservient moods
-3. ❌ Party formation when 4 heroes remember same domain
-4. ❌ Party raid mechanics
-
-## Priority 7: Dragon Type Special Abilities
-Complete dragon type differentiation:
-
-1. ❌ Serpent figure-8 movement + disorientation aura
-2. ❌ Blade undefendable attacks  
-3. ❌ Fragile blessing drops on combat
-4. ❌ Dragon spawn location validation by type
 
 ## Priority 8: User Interaction System
 Spire-gated dragon submission:

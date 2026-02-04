@@ -38,10 +38,27 @@ class Ruins:
             return False
         
         self.days_as_ruin += 1
+        
+        # Spawn bandits after 2 days (only villages and cities, not camps/spires)
+        if self.days_as_ruin == 2:
+            self._try_spawn_ruin_bandit()
+        
         if self.days_as_ruin >= self.get_ruins_duration():
             self.world.remove_entity(self)
         
         return True  # Skip normal on_dawn processing when dead
+    
+    def _try_spawn_ruin_bandit(self) -> None:
+        """Spawn a bandit pack from the ruins. Only villages and cities spawn bandits."""
+        entity_type = self.__class__.__name__
+        if entity_type not in ('Village', 'City'):
+            return
+        
+        from game.entities import Bandit
+        
+        # Spawn bandit at ruins location
+        bandit = Bandit(self.world, self.coordinates)
+        self.world.add_entity(bandit)
     
     def on_become_ruins(self) -> None:
         """Called when entity becomes ruins. Stores blessings for pillaging.

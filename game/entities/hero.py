@@ -66,6 +66,7 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
         self.acquaintances: Set['Hero'] = set()  # Heroes we know
         self.days_domain_known: Dict = {}  # domain -> days since learned
         self.dead_friend: Optional['Hero'] = None  # Friend who died (triggers vengeful)
+        self.opportunistic_target: Optional[Any] = None  # Ruins/treasury spotted (triggers opportunistic)
     
     def is_passable(self, coordinates: Coordinates) -> bool:
         """Heroes can move through fields and forests."""
@@ -119,15 +120,15 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
             return HeroMood.VENGEFUL
         
         # Opportunistic if domain known for 10+ days or sees ruins/treasury
+        if self.opportunistic_target and self.opportunistic_target.is_alive:
+            # Clear after one day
+            target = self.opportunistic_target
+            self.opportunistic_target = None
+            return HeroMood.OPPORTUNISTIC
+        
         if self.days_domain_known:
             for domain, days in self.days_domain_known.items():
                 if days >= 10:
-                    return HeroMood.OPPORTUNISTIC
-        
-        # Check for ruins/treasury nearby
-        for entity in self.world.entities:
-            if entity.__class__.__name__ == 'Domain' and hasattr(entity, 'is_treasury') and entity.is_treasury:
-                if self.get_distance(entity.coordinates) <= 30:
                     return HeroMood.OPPORTUNISTIC
         
         # Tired after 3 consecutive active days
@@ -157,6 +158,7 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
             self.consecutive_active_days += 1
         elif self.mood == HeroMood.TIRED:
             self._schedule_tired()
+            # Tired days don't count as active
         elif self.mood == HeroMood.ADVENTUROUS:
             self._schedule_adventurous()
             self.consecutive_active_days += 1
@@ -190,9 +192,11 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
         settlement = self.get_current_settlement()
         if settlement:
             self.schedule_actions([
+                (ActionType.PROTECT, settlement),
                 (ActionType.REST, None),
                 (ActionType.PROTECT, settlement),
             ])
+            self.think(f"I shall guard {settlement.name if hasattr(settlement, 'name') else 'this place'}.")
             return
         
         # Check for nearby market day (tired heroes are attracted to markets)
@@ -218,10 +222,16 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
         actions = []
         for settlement in settlements:
             actions.append((ActionType.MOVE_TO, settlement))
-        if random() < 0.3:
-            actions.append((ActionType.PATROL, None))
+        
+        # Add exploration/patrol between settlements
+        if random() < 0.5:
+            actions.insert(len(actions) // 2 if actions else 0, (ActionType.PATROL, None))
+        
         if actions:
             self.schedule_actions(actions)
+        else:
+            # No remote settlements, just patrol the area
+            self.schedule_actions([(ActionType.PATROL, None), (ActionType.PATROL, None)])
     
     def _schedule_opportunistic(self) -> None:
         """Pillage ruins/treasury or rob unguarded domain."""
@@ -242,12 +252,23 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
                 self._schedule_adventurous()
     
     def _schedule_vengeful(self) -> None:
-        """Hunt bandits."""
-        self.schedule_actions([
-            (ActionType.PATROL, None),
-            (ActionType.PATROL, None),
-            (ActionType.PATROL, None),
-        ])
+        """Hunt bandits - patrol extensively and visit settlements to protect them."""
+        settlements = self._find_remote_settlements(count=2)
+        actions = []
+        
+        # Patrol between settlements looking for bandits
+        if settlements:
+            actions.append((ActionType.PATROL, None))
+            actions.append((ActionType.MOVE_TO, settlements[0]))
+            actions.append((ActionType.PATROL, None))
+            if len(settlements) > 1:
+                actions.append((ActionType.MOVE_TO, settlements[1]))
+        else:
+            # Just patrol if no settlements found
+            actions = [(ActionType.PATROL, None)] * 3
+        
+        self.schedule_actions(actions)
+        self.think("I shall avenge the fallen.")
     
     def _schedule_foreboding(self) -> None:
         """Lead party to attack dragon domain."""
@@ -364,14 +385,32 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
         return heroes
     
     def try_form_party(self) -> bool:
-        """Try to form a dragon-hunting party."""
+        """Try to form a dragon-hunting party when multiple heroes know the same domain."""
         if self.party:
             return True
         
+        # Need to know at least one domain to form a party
+        if not self.known_domains:
+            return False
+        
         nearby = self._find_nearby_heroes()
         
-        if len(nearby) >= PARTY_SIZE - 1:
-            party = [self] + nearby[:PARTY_SIZE - 1]
+        # Need at least 3 other heroes nearby (4 total for party)
+        if len(nearby) < PARTY_SIZE - 1:
+            return False
+        
+        # Check if any nearby heroes know the same domain(s)
+        potential_members = []
+        for hero in nearby:
+            if hasattr(hero, 'known_domains'):
+                # Check for shared domain knowledge
+                shared_domains = self.known_domains & hero.known_domains
+                if shared_domains:
+                    potential_members.append(hero)
+        
+        # Need at least 3 others who share domain knowledge
+        if len(potential_members) >= PARTY_SIZE - 1:
+            party = [self] + potential_members[:PARTY_SIZE - 1]
             
             # Set up party
             self.party = party
@@ -417,13 +456,52 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
                 self.blessings = 0
                 self.think("Sold my treasures in the city.")
         
-        # Try to form party if adventurous and see dragons
+        # Adventurous heroes remember dragon lairs and try to form parties
         if self.mood == HeroMood.ADVENTUROUS and not self.party:
+            # Remember any dragon/domain within patrol range
             for entity in self.world.entities:
                 if entity.__class__.__name__ in ('Dragon', 'Domain'):
                     if self.get_distance(entity.coordinates) <= PATROL_RANGE:
-                        self.known_domains.add(entity.coordinates)
-                        self.days_domain_known[entity.coordinates] = 0
+                        if entity.coordinates not in self.known_domains:
+                            self.known_domains.add(entity.coordinates)
+                            self.days_domain_known[entity.coordinates] = 0
+                            self.think(f"I've spotted a dragon lair!")
+            
+            # Try to form party if we know domains
+            if self.known_domains and not self.party:
+                if self.try_form_party():
+                    self.think("Fellow heroes, let us band together!")
+        
+        # All active moods spot pillage opportunities
+        if self.mood in (HeroMood.ADVENTUROUS, HeroMood.MERCENARY, HeroMood.VENGEFUL):
+            for entity in self.world.entities:
+                # Spot ruins with blessings
+                if entity.__class__.__name__ in ('Village', 'City'):
+                    if entity.is_dead and hasattr(entity, 'ruin_blessings') and entity.ruin_blessings > 0:
+                        if self.get_distance(entity.coordinates) <= PATROL_RANGE:
+                            self.opportunistic_target = entity
+                            self.think(f"I see ruins that hold treasure!")
+                            break
+                
+                # Spot dragon treasury
+                if entity.__class__.__name__ == 'Domain':
+                    if hasattr(entity, 'is_treasury') and entity.is_treasury:
+                        if hasattr(entity, 'treasure') and entity.treasure > 0:
+                            if self.get_distance(entity.coordinates) <= PATROL_RANGE:
+                                self.opportunistic_target = entity
+                                self.think(f"A dragon's hoard lies unguarded!")
+                                break
+        
+        # Become acquaintances with heroes in the same settlement
+        if self.mood in (HeroMood.ADVENTUROUS, HeroMood.MERCENARY):
+            settlement = self.get_current_settlement()
+            if settlement:
+                for entity in self.world.entities:
+                    if entity.__class__.__name__ == 'Hero' and entity != self and entity.is_alive:
+                        if hasattr(entity, 'get_current_settlement'):
+                            if entity.get_current_settlement() == settlement:
+                                self.acquaintances.add(entity)
+                                entity.acquaintances.add(self)
         
         # Check for scheduled action
         action = self.get_action_for_hour(hour)
@@ -544,6 +622,7 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
         """
         Check for threats to protect against.
         Heroes can interrupt ongoing engagements (robberies, attacks).
+        Blade dragon attacks cannot be interrupted.
         """
         nearby = self.get_nearby_entities(PROTECTION_RANGE)
         
@@ -554,9 +633,24 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
                     return entity
             
             # Check for entities being victimized (engaged in robbery/combat)
+            # Mercenaries prioritize protecting caravans they're escorting
             if entity.__class__.__name__ in ('Caravan', 'Village', 'City', 'Camp'):
+                # If mercenary, prioritize the caravan we're escorting
+                if self.mood == HeroMood.MERCENARY and entity.__class__.__name__ == 'Caravan':
+                    if self.target_entity == entity and hasattr(entity, 'current_engagement'):
+                        engagement = entity.current_engagement
+                        if engagement and not engagement.can_be_interrupted:
+                            continue  # Blade dragons cannot be defended against
+                        if engagement and engagement.engagement_type in (EngagementType.ROBBERY, EngagementType.COMBAT):
+                            if engagement.initiator.is_alive and engagement.initiator != self:
+                                return engagement.initiator
+                
+                # General protection for all heroes
                 if hasattr(entity, 'current_engagement') and entity.current_engagement:
                     engagement = entity.current_engagement
+                    # Check if this engagement can be interrupted
+                    if not engagement.can_be_interrupted:
+                        continue  # Blade dragons cannot be defended against
                     # Return the attacker if it's a robbery or combat
                     if engagement.engagement_type in (EngagementType.ROBBERY, EngagementType.COMBAT):
                         if engagement.initiator.is_alive and engagement.initiator != self:

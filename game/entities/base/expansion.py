@@ -40,9 +40,10 @@ class ExpansionMixin(Named):
         if not hasattr(self, 'subsidiary_camps'):
             self.subsidiary_camps = []
         
-        # Count actual camps (not caravans)
+        # Count actual camps (not caravans), excluding lake camps which don't count toward limit
         camp_count = sum(1 for c in self.subsidiary_camps 
-                         if c.__class__.__name__ == 'Camp')
+                         if c.__class__.__name__ == 'Camp' and 
+                         getattr(getattr(c, 'target_spirit', None), 'type', None) != 'water')
         
         max_camps = self.get_max_camps()
         if camp_count >= max_camps:
@@ -93,9 +94,9 @@ class ExpansionMixin(Named):
         elif prioritized == 'mountain' and forest_camps < secondary_required:
             priority_types.append('forest')
         
-        # If requirements met, allow any type
+        # If requirements met, allow any type (including water/lake)
         if not priority_types:
-            priority_types = ['forest', 'mountain']
+            priority_types = ['forest', 'mountain', 'water']
         
         # Find closest unoccupied spirit of priority type
         best_spirit = None

@@ -60,6 +60,87 @@ class DragonPronouns:
 
 class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
     """Base dragon class with mood-based scheduling."""
+    
+    # Valid spawn terrain by domain type
+    VALID_SPAWN_TERRAIN = {
+        'aquatic': ['water'],
+        'mountain': ['mountain'],
+        'verdant': ['field', 'forest'],
+        'scorched': ['field', 'water', 'mountain', 'forest'],  # Scorched can spawn anywhere
+    }
+    
+    @staticmethod
+    def validate_spawn_location(world: 'World', coordinates: Coordinates, domain_type: str) -> bool:
+        """
+        Validate that spawn coordinates match the domain type terrain.
+        
+        Args:
+            world: The game world
+            coordinates: Proposed spawn location
+            domain_type: One of 'aquatic', 'mountain', 'verdant', 'scorched'
+            
+        Returns:
+            True if location is valid for the domain type
+        """
+        x, y = coordinates
+        if x < 0 or y < 0 or x >= world.WIDTH or y >= world.HEIGHT:
+            return False
+        
+        height = world.height_map[y][x]
+        biome = world.get_biome_from_height(height)
+        
+        valid_biomes = Dragon.VALID_SPAWN_TERRAIN.get(domain_type, [])
+        return biome in valid_biomes
+    
+    @staticmethod
+    def find_valid_spawn_location(world: 'World', domain_type: str, min_lair_distance: int = 30) -> Optional[Coordinates]:
+        """
+        Find a random valid spawn location for a dragon.
+        
+        Args:
+            world: The game world
+            domain_type: One of 'aquatic', 'mountain', 'verdant', 'scorched'
+            min_lair_distance: Minimum distance from other dragon lairs
+            
+        Returns:
+            Valid coordinates, or None if no suitable location found
+        """
+        from random import sample
+        
+        valid_biomes = Dragon.VALID_SPAWN_TERRAIN.get(domain_type, [])
+        
+        # Get all valid coordinates
+        candidates = []
+        for y in range(world.HEIGHT):
+            for x in range(world.WIDTH):
+                height = world.height_map[y][x]
+                biome = world.get_biome_from_height(height)
+                if biome in valid_biomes:
+                    candidates.append((x, y))
+        
+        if not candidates:
+            return None
+        
+        # Get existing lair locations
+        lair_coords = []
+        for entity in world.entities:
+            if entity.__class__.__name__ == 'Domain' and entity.is_alive:
+                lair_coords.append(entity.coordinates)
+        
+        # Try random candidates until we find one far enough from lairs
+        for coords in sample(candidates, min(100, len(candidates))):
+            far_enough = True
+            for lair in lair_coords:
+                dx = abs(coords[0] - lair[0])
+                dy = abs(coords[1] - lair[1])
+                if max(dx, dy) < min_lair_distance:
+                    far_enough = False
+                    break
+            if far_enough:
+                return coords
+        
+        # No location found far enough from lairs
+        return None
 
     def __init__(
         self,
@@ -700,6 +781,7 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         """
         Initiate combat engagement with target. Resolution happens at hour-end.
         Falls back to legacy instant resolution for non-engagement-aware targets.
+        Blade dragons cannot be defended against (can_be_interrupted=False).
         """
         from game.world.combat import initiate_combat, resolve_attack
         
@@ -707,9 +789,12 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             target = self.current_target
             target_type = target.__class__.__name__
             
+            # Blade dragons cannot be interrupted - heroes can't protect victims
+            undefendable = (self.dragon_type == 'blade')
+            
             # Use engagement system for entities that support it
             if target_type in ('Hero', 'Bandit', 'Caravan'):
-                initiate_combat(self, target, self.world)
+                initiate_combat(self, target, self.world, can_be_interrupted=not undefendable)
                 # Don't complete action - let on_hour_end handle resolution
                 self.current_target = None
                 return
@@ -775,7 +860,8 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         # Good dragons protect humans from bandits
         if self.is_good and other.__class__.__name__ == 'Bandit':
             from game.world.combat import initiate_combat
-            initiate_combat(self, other, self.world)
+            undefendable = (self.dragon_type == 'blade')
+            initiate_combat(self, other, self.world, can_be_interrupted=not undefendable)
             self.think("I shall protect the innocent.")
             return ScheduledAction(
                 hour=self.world.time.current_hour,
@@ -790,7 +876,8 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             if self.get_distance(self.domain.coordinates) <= TERRITORIAL_RADIUS:
                 if other.__class__.__name__ in ('Hero', 'Caravan', 'Bandit'):
                     from game.world.combat import initiate_combat
-                    initiate_combat(self, other, self.world)
+                    undefendable = (self.dragon_type == 'blade')
+                    initiate_combat(self, other, self.world, can_be_interrupted=not undefendable)
                     self.think("Intruders in my territory!")
                     return ScheduledAction(
                         hour=self.world.time.current_hour,
@@ -805,7 +892,8 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             if self.current_action.action_type == ActionType.TEND_SPIRIT:
                 if other.__class__.__name__ in ('Hero', 'Caravan', 'Bandit'):
                     from game.world.combat import initiate_combat
-                    initiate_combat(self, other, self.world)
+                    undefendable = (self.dragon_type == 'blade')
+                    initiate_combat(self, other, self.world, can_be_interrupted=not undefendable)
                     self.think("You dare approach while I commune with the spirit?")
                     return ScheduledAction(
                         hour=self.world.time.current_hour,
