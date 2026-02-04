@@ -3,7 +3,10 @@ from enum import Enum
 from random import random, choice, randint
 from typing import TYPE_CHECKING, Dict, Any, List, Optional, Set
 
-from .base import Coordinates, Mobile, Thinking, Mortal, Settlement, Scheduled, ActionType, ScheduledAction, Aging
+from .base import (
+    Coordinates, Mobile, Thinking, Mortal, Settlement, Scheduled, 
+    ActionType, ScheduledAction, Aging, EngagementType
+)
 
 if TYPE_CHECKING:
     from game.world import World
@@ -490,20 +493,34 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
             self.complete_current_action()
     
     def _execute_pillage(self) -> None:
-        """Pillage ruins/treasury/domain."""
+        """Pillage ruins/treasury/domain using engagement system."""
+        from game.world.combat import initiate_pillage
+        
         target = self.target_entity
         
-        if target and hasattr(target, 'treasure') and target.treasure > 0:
-            take = min(MAX_BLESSINGS - self.blessings, target.treasure)
-            self.blessings += take
-            target.treasure -= take
-            self.think(f"Claimed {take} blessings!")
+        if not target:
+            self.complete_current_action()
+            return
         
-        self.complete_current_action()
+        # Check if target can be pillaged
+        can_pillage = False
+        if hasattr(target, 'can_be_pillaged') and target.can_be_pillaged():
+            can_pillage = True
+        elif hasattr(target, 'ruin_blessings') and target.ruin_blessings > 0:
+            can_pillage = True
+        elif hasattr(target, 'treasure') and target.treasure > 0:
+            can_pillage = True
+        
+        if can_pillage:
+            initiate_pillage(self, target, self.world)
+            # Don't complete action - engagement resolves at hour-end
+        else:
+            self.think("Nothing of value here.")
+            self.complete_current_action()
     
     def _execute_attack(self) -> None:
-        """Attack a target (dragon domain or entity)."""
-        from game.world.combat import resolve_attack
+        """Attack a target (dragon domain or entity) via engagement system."""
+        from game.world.combat import initiate_combat
         
         target = self.target_entity
         
@@ -513,51 +530,66 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
         
         # If attacking a domain, get the dragon
         if hasattr(target, 'owner') and target.owner and target.owner.is_alive:
-            resolve_attack(self, target.owner, self.world)
+            initiate_combat(self, target.owner, self.world)
         elif hasattr(target, 'owner') and (not target.owner or not target.owner.is_alive):
             # Dragon dead, pillage instead
             self._execute_pillage()
             return
         elif hasattr(target, 'is_alive') and target.is_alive:
-            resolve_attack(self, target, self.world)
-        
-        self.complete_current_action()
+            initiate_combat(self, target, self.world)
+        else:
+            self.complete_current_action()
     
     def check_for_encounters(self) -> Optional[Mobile]:
-        """Check for threats to protect against."""
+        """
+        Check for threats to protect against.
+        Heroes can interrupt ongoing engagements (robberies, attacks).
+        """
         nearby = self.get_nearby_entities(PROTECTION_RANGE)
         
         for entity in nearby:
-            # Attack bandits (always if vengeful)
-            if entity.__class__.__name__ == 'Bandit':
+            # Attack bandits directly (always if vengeful, often otherwise)
+            if entity.__class__.__name__ == 'Bandit' and entity.is_alive:
                 if self.mood == HeroMood.VENGEFUL or random() < 0.7:
                     return entity
             
-            # Protect caravans/settlements from bandits
-            if entity.__class__.__name__ in ('Caravan', 'Village', 'Camp'):
-                # Check if being attacked by bandit
-                for other in self.get_nearby_entities(PROTECTION_RANGE):
-                    if other.__class__.__name__ == 'Bandit':
-                        return other
+            # Check for entities being victimized (engaged in robbery/combat)
+            if entity.__class__.__name__ in ('Caravan', 'Village', 'City', 'Camp'):
+                if hasattr(entity, 'current_engagement') and entity.current_engagement:
+                    engagement = entity.current_engagement
+                    # Return the attacker if it's a robbery or combat
+                    if engagement.engagement_type in (EngagementType.ROBBERY, EngagementType.COMBAT):
+                        if engagement.initiator.is_alive and engagement.initiator != self:
+                            return engagement.initiator
         
         return None
     
     def react_to_encounter(self, other: 'Mobile') -> Optional[ScheduledAction]:
-        """React to an encountered entity."""
+        """
+        React to an encountered entity.
+        Heroes interrupt engagements by initiating combat with the attacker.
+        """
+        from game.world.combat import initiate_combat
+        
         if other.__class__.__name__ == 'Bandit':
-            if self.mood == HeroMood.VENGEFUL:
-                # Vengeful heroes kill bandits
-                other.die("slain by vengeful hero")
-                self.think("Vengeance is mine!")
-                return None
-            else:
-                # Attack bandit
-                return ScheduledAction(
-                    hour=self.world.time.current_hour,
-                    action_type=ActionType.ATTACK,
-                    target=other,
-                    priority=10
-                )
+            # Interrupt any engagement the bandit has
+            if hasattr(other, 'current_engagement') and other.current_engagement:
+                # Force bandit to disengage - hero is interrupting!
+                if hasattr(other, 'disengage'):
+                    other.disengage("A hero intervenes!")
+            
+            # Initiate combat via engagement system
+            initiate_combat(self, other, self.world)
+            
+            self.think("I shall protect the innocent!")
+            
+            # Return an action so the current action gets interrupted
+            return ScheduledAction(
+                hour=self.world.time.current_hour,
+                action_type=ActionType.ATTACK,
+                target=other,
+                priority=10
+            )
         
         return None
     
@@ -615,6 +647,23 @@ class Hero(Mortal, Mobile, Thinking, Scheduled, Aging):
                     self.think(f"Found {taken} blessing{'s' if taken > 1 else ''}!")
                 break
     
+    def on_hour_end(self, hour: int) -> None:
+        """
+        Resolve any active engagement at hour-end.
+        Hero combat outcomes are determined here.
+        """
+        if not self.current_engagement:
+            return
+        
+        from game.world.combat import resolve_engagement
+        
+        # Resolve the engagement
+        resolve_engagement(self.current_engagement, self.world)
+        
+        # Clear engagement and complete action
+        self.current_engagement = None
+        self.complete_current_action()
+
     def serialize(self) -> Dict[str, Any]:
         """Serialize for JSON output."""
         data = super().serialize()

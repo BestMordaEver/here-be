@@ -1,5 +1,82 @@
 ❌ not done, ➕ done, 〰 partially done
 
+# Engagement System ➕
+Actions are hour-long states that can be interrupted. Resolution happens at hour-end.
+
+## Time Flow
+- on_hour(N): Scheduled actions trigger, entities initiate engagements
+- [10-sec ticks]: Movement continues, encounter checks can INTERRUPT engagements
+- on_hour_end(N): Uninterrupted engagements RESOLVE (damage dealt, blessings stolen, etc.)
+- on_hour(N+1): Next scheduled actions begin
+
+## Engagement Properties
+- engagement_type: COMBAT, ROBBERY, TENDING, TRADING, FEEDING, PROTECTING, PILLAGING
+- initiator: The entity that started the engagement
+- target: Entity or location being engaged with
+- started_hour: When the engagement began
+- interruptible: Whether encounters can break it (most are, some like FEEDING may not be)
+
+## Engagement States (for Mobile entities)
+- engaged_with: Optional[Engagement] - current engagement if any
+- engage(target, type) - start engagement, both parties aware
+- disengage(reason) - break engagement, try to resume previous action or flee
+
+## Interrupt Behavior
+When an engagement is interrupted:
+1. Both parties disengage
+2. Initiator tries to continue original scheduled action if still valid
+3. If original target dead/gone, action becomes INTERRUPTED state
+4. Some interrupts cause flee behavior (dragon scares bandit)
+
+## Resolution Behavior (on_hour_end)
+If still engaged when hour ends:
+- ROBBERY: Blessing transferred, bandit retreats
+- COMBAT: Outcome based on combatants (hero mood unknown to bandit until now)
+- TENDING: Spirit receives blessing
+- TRADING: Gossip exchanged, caravan returns
+- FEEDING: Target consumed
+- PROTECTING: Protector remains in place
+- PILLAGING: Blessings taken from ruins/treasury
+
+## Entity-Specific Engagement Rules
+
+### Bandit
+- Initiates ROBBERY on caravans (doesn't check for heroes first)
+- Initiates COMBAT on heroes (doesn't know their mood until resolution)
+- INTERRUPTED by: dragon proximity (flees), hero intervention
+- On interrupt: flees to nearest forest
+
+### Hero  
+- Can INTERRUPT nearby robberies/attacks by initiating COMBAT
+- Vengeful: kills bandits at resolution
+- Tired: loses to dragons at resolution (unless in settlement)
+- Adventurous/Mercenary: actively patrols for engagements to interrupt
+
+### Dragon
+- Proximity alone can INTERRUPT bandit engagements (fear)
+- Good dragons INTERRUPT attacks on humans by engaging attacker
+- Territorial dragons initiate COMBAT when near domain
+- CIRCLE action is a pre-engagement phase (not interruptible?)
+
+### Caravan
+- Passive - can be engaged by others, cannot initiate
+- When ROBBERY interrupted, continues original route
+- When target settlement dies mid-journey, flees to nearest
+
+### Settlement
+- Passive - can be engaged by attackers
+- Heroes within 3 tiles can INTERRUPT attacks by engaging attacker
+
+## Implementation Order
+1. ➕ Add Engagement dataclass to scheduled.py
+2. ➕ Add engaged_with, engage(), disengage() to Mobile or Scheduled
+3. ➕ Add on_hour_end() hook to time_system.py and world.py
+4. ➕ Refactor combat.py: split initiate_X vs resolve_X
+5. ➕ Implement bandit engagement (robbery, combat)
+6. ➕ Implement hero interrupts (protect caravan, engage bandit)
+7. ➕ Implement dragon fear interrupt
+8. ➕ Expand to remaining entity interactions (feeding, tending, pillaging)
+
 # User interaction 〰
 - users can submit a form that defines some characteristics of a dragon 〰
 - users can submit the form up to as many times per day as there are active spires ❌
@@ -19,10 +96,10 @@
 - pretty 〰
 - accessibility 〰
 
-# Update loop 〰
+# Update loop ➕
 - there is a daily update that determines settlement events and entity moods ➕
 - after all moods are set, entities create a schedule for the day, evenly spreading the planned actions ➕
-- there is an update every 10 seconds which processes the reactions and motions of the schedule (dragon circles the target, bandit stops the caravan etc) 〰
+- there is an update every 10 seconds which processes the reactions and motions of the schedule (dragon circles the target, bandit stops the caravan etc) ➕
 
 # Mobile entities ➕
 - movement logic (state machine: created→moving→arrived) ➕
@@ -41,10 +118,10 @@
 # Entity types 〰
 - spirits and cattle ➕
 * spirits spawn during generation at the most central tiles of forests, mountains and lakes ➕
-* spirits tended by a dragon receive a blessing ❌
+* spirits tended by a dragon receive a blessing ➕
 * cattle spawn every 50 cycles, max 20 in world, random plains location ➕
 * cattle wander randomly, gravitate toward villages within 10 tiles ➕
-* cattle fear dragons and scorched land 〰
+* cattle fear dragons and scorched land ➕
 
 - settlements 〰
 * camps have 2 hit points, villages - 3, cities - 5 ❌
@@ -77,8 +154,8 @@
 * a village can occupy a lake without a camp if it's close enough ➕
 * when a city receives a gossip about blessing in a village, it sends a caravan to buy it ❌
 * cities with spires sell blessings to nearby cities ➕
-* ruins hold any blessings the settlement had, persist until pillaged ❌
-* ruins can be pillaged for blessings by heroes and bandits ❌
+* ruins hold any blessings the settlement had, persist until pillaged ➕
+* ruins can be pillaged for blessings by heroes and bandits ➕
 
 - spire 〰
 * gold tower "Ї" ("1" if ruined), single tile near city ➕
@@ -101,7 +178,7 @@
 * attack nearby villages if haven't robbed or pillaged in 3 days ➕
 * carry up to 3 stolen blessings as trinkets until death ➕
 * if stealing blessings when already having 3, the newly stolen blessings are permanently lost ❌
-* fear dragons ❌
+* fear dragons ➕
 
 - heroes 〰
 * if spawned from a village - have a brownish color, if from a city - gold ➕
@@ -203,14 +280,14 @@
 * an evil dragon attacks humans that are near the spirit the dragon currently tends ➕
 * after death domain becomes pillage-able treasury ➕
 
-- blessing  〰
+- blessing ➕
 * can be carried by a caravan one at a time ➕
 * can be picked up and carried by a hero or a bandit three at a time ➕
 * dropped on ground on death, persist until picked up ➕
 * also dropped on ground after camp death ➕
-* can be pillaged from ruins, lairs and treasuries ❌
+* can be pillaged from ruins, lairs and treasuries ➕
 
-# Damage values 〰
+# Damage values ➕
 * dragons destroy unprotected caravans and kill bandits ➕
 * dragons deal 1 damage to unprotected settlements ➕
 * bandits deal 1 damage to unprotected settlements, but don't trigger mourning ➕
@@ -218,3 +295,70 @@
 * dragons kill tired heroes that are not in a settlement ➕
 * vengeful heroes kill bandits ➕
 * party of heroes kills a dragon, but one of the heroes must die (two against blade dragons) at random ➕
+
+# =============================================================================
+# IMPLEMENTATION PLAN - Remaining Features
+# =============================================================================
+
+## Priority 1: Core Gameplay Fixes (Quick wins)
+These are simple fixes that make the existing systems work as intended:
+
+1. ❌ Settlement HP values - Change villages to 3 HP, cities to 5 HP (currently 500/1000)
+2. ❌ Spire destroyed with city - Add check in city.die() to kill spire
+3. ❌ Bandit overflow blessings lost - When stealing with 3 blessings, extras vanish
+4. ❌ Lake camps not counting toward total - Add camp_type tracking
+
+## Priority 2: Ruin Bandit Spawning
+Adds consequence for settlement destruction:
+
+1. ❌ Track ruin age in Ruins mixin (days_as_ruin already exists)
+2. ❌ After 2 days as ruin, spawn single bandit pack
+3. ❌ Only villages and cities spawn bandits (not camps)
+
+## Priority 3: Hero Blessing Economy  
+Heroes need to interact with the blessing system:
+
+1. ❌ Heroes sell blessings at first city visited
+2. ❌ Track hero blessing capacity (already have MAX_BLESSINGS constant)
+3. ❌ Heroes gain blessings from pillaging (engagement exists, need behavior)
+
+## Priority 4: Gossip System
+Information flow between entities:
+
+1. ❌ Add gossip/memory system to Thinking mixin
+2. ❌ Caravans share news at trade destinations
+3. ❌ Heroes share news in settlements
+4. ❌ Cities react to gossip about village blessings
+
+## Priority 5: Hero Mood Behaviors (Deep work)
+Deep hero personality implementation:
+
+1. ❌ Tired mood - force rest after 3 non-tired days, protect settlement
+2. ❌ Mercenary mood - escort caravans
+3. ❌ Adventurous mood - explore, remember lairs, visit settlements
+4. ❌ Opportunistic mood - pillage when opportunity arises
+5. ❌ Vengeful mood - hunt bandits after acquaintance death
+
+## Priority 6: Hero Party System
+Multi-hero dragon raids:
+
+1. ❌ Track hero parties and party leader
+2. ❌ Foreboding/subservient moods
+3. ❌ Party formation when 4 heroes remember same domain
+4. ❌ Party raid mechanics
+
+## Priority 7: Dragon Type Special Abilities
+Complete dragon type differentiation:
+
+1. ❌ Serpent figure-8 movement + disorientation aura
+2. ❌ Blade undefendable attacks  
+3. ❌ Fragile blessing drops on combat
+4. ❌ Dragon spawn location validation by type
+
+## Priority 8: User Interaction System
+Spire-gated dragon submission:
+
+1. ❌ Count active spires for submission limit
+2. ❌ Track consecutive 5-spire days for stability bonus
+3. ❌ Validate dragon spawn location by type
+4. ❌ Connect form to spawn system

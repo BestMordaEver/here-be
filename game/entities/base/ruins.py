@@ -11,13 +11,18 @@ class Ruins:
     Subclasses must define:
         - RUINS_DURATION_DAYS: class constant for days before removal
         - is_dead: attribute indicating entity is dead
+    
+    Ruins store any blessings the entity had when it died, and can be
+    pillaged by heroes and bandits to retrieve those blessings.
     """
     
     days_as_ruin: int
+    ruin_blessings: int
     
     def init_ruins(self) -> None:
         """Initialize ruins attributes. Call from __init__."""
         self.days_as_ruin = 0
+        self.ruin_blessings = 0  # Blessings held in ruins
     
     def get_ruins_duration(self) -> int:
         """Get ruins duration in days. Override for dynamic durations."""
@@ -37,3 +42,30 @@ class Ruins:
             self.world.remove_entity(self)
         
         return True  # Skip normal on_dawn processing when dead
+    
+    def on_become_ruins(self) -> None:
+        """Called when entity becomes ruins. Stores blessings for pillaging.
+        
+        Call this from die() after setting is_dead = True.
+        """
+        # Store any blessings the entity had
+        if hasattr(self, 'blessings'):
+            self.ruin_blessings = self.blessings
+            self.blessings = 0
+    
+    def pillage_ruins(self, amount: int) -> int:
+        """Take blessings from these ruins.
+        
+        Args:
+            amount: Maximum blessings to take
+            
+        Returns:
+            Actual number of blessings taken
+        """
+        taken = min(amount, self.ruin_blessings)
+        self.ruin_blessings -= taken
+        return taken
+    
+    def can_be_pillaged(self) -> bool:
+        """Check if these ruins have anything to pillage."""
+        return self.is_dead and self.ruin_blessings > 0

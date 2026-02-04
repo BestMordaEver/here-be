@@ -2,7 +2,10 @@
 from random import randint, random
 from typing import TYPE_CHECKING, Dict, Any, Optional
 
-from .base import Coordinates, Mobile, Settlement, Mortal, Scheduled, ActionType, ScheduledAction
+from .base import (
+    Coordinates, Mobile, Settlement, Mortal, Scheduled, 
+    ActionType, ScheduledAction, EngagementType
+)
 
 if TYPE_CHECKING:
     from game.world import World
@@ -122,11 +125,11 @@ class Cattle(Mortal, Mobile, Scheduled):
         self.grazing = True
     
     def check_for_encounters(self) -> Optional[Mobile]:
-        """Check for dragons (fear)."""
+        """Check for dragons (fear). Cattle flee from all dragons."""
         nearby = self.get_nearby_entities(FEAR_RADIUS)
         
         for entity in nearby:
-            if entity.__class__.__name__ == 'Dragon':
+            if entity.__class__.__name__ == 'Dragon' and entity.is_alive:
                 return entity
         
         return None
@@ -134,6 +137,11 @@ class Cattle(Mortal, Mobile, Scheduled):
     def react_to_encounter(self, other: 'Mobile') -> Optional[ScheduledAction]:
         """React to dragons by fleeing."""
         if other.__class__.__name__ == 'Dragon':
+            # If we're being hunted (engaged), we're probably about to die
+            # but we still try to flee
+            if self.is_engaged():
+                self.disengage("Fleeing!")
+            
             self.fleeing_from = other
             self.grazing = False
             self.flee_from(other)
@@ -144,6 +152,18 @@ class Cattle(Mortal, Mobile, Scheduled):
             )
         
         return None
+    
+    def on_hour_end(self, hour: int) -> None:
+        """
+        Resolve any engagement at hour-end.
+        For cattle, this is usually being hunted by a dragon.
+        """
+        if not self.current_engagement:
+            return
+        
+        # If we're being hunted, the dragon's on_hour_end handles resolution
+        # We just clear our engagement state (if we survive)
+        self.current_engagement = None
     
     def serialize(self) -> Dict[str, Any]:
         """Serialize for JSON output."""

@@ -7,6 +7,7 @@ from typing import List, Optional, Any, Tuple, TYPE_CHECKING
 if TYPE_CHECKING:
     from game.world import World
     from game.world.time_system import GameTime
+    from .mobile import Mobile
 
 
 # Active hours for scheduling (exclusive of dawn/dusk transition hours)
@@ -224,6 +225,39 @@ class ScheduledAction:
         return self.action_type not in (ActionType.SLEEP,)
 
 
+class EngagementType(Enum):
+    """Types of engagements between entities."""
+    COMBAT = "combat"           # Fighting - resolved by combat rules
+    ROBBERY = "robbery"         # Bandit robbing caravan/settlement
+    TENDING = "tending"         # Dragon tending spirit
+    TRADING = "trading"         # Caravan trading at settlement
+    FEEDING = "feeding"         # Dragon/predator feeding
+    PROTECTING = "protecting"   # Hero protecting settlement/caravan
+    PILLAGING = "pillaging"     # Looting ruins/treasury/domain
+
+
+@dataclass
+class Engagement:
+    """
+    Represents an ongoing interaction between entities that persists until
+    hour-end or interruption. Resolution happens at on_hour_end().
+    """
+    engagement_type: EngagementType
+    initiator: 'Mobile'           # Who started the engagement
+    target: Any                   # Entity or location being engaged with
+    started_hour: int             # Hour when engagement began
+    can_be_interrupted: bool = True  # Some engagements (feeding?) may not be interruptible
+    original_action: Optional[ScheduledAction] = None  # What initiator was doing before (for resume)
+    
+    def __str__(self) -> str:
+        target_name = getattr(self.target, 'name', None) or str(getattr(self.target, 'coordinates', self.target))
+        return f"{self.engagement_type.value} with {target_name} (started {self.started_hour}:00)"
+    
+    def involves(self, entity: 'Mobile') -> bool:
+        """Check if an entity is part of this engagement."""
+        return entity is self.initiator or entity is self.target
+
+
 class Scheduled:
     """Mixin for entities that plan their daily activities."""
     
@@ -232,6 +266,9 @@ class Scheduled:
         self.current_action: Optional[ScheduledAction] = None
         self._interrupted_action: Optional[ScheduledAction] = None  # Action we were doing before interruption
         self.is_sleeping = False
+        
+        # Engagement system
+        self.current_engagement: Optional[Engagement] = None  # Active engagement if any
     
     def build_schedule(self) -> None:
         """
@@ -418,11 +455,126 @@ class Scheduled:
             return True
         return False
     
+    # ==================== Engagement System ====================
+    
+    def engage(
+        self,
+        target: Any,
+        engagement_type: EngagementType,
+        can_be_interrupted: bool = True,
+    ) -> Engagement:
+        """
+        Start an engagement with a target. Engagements persist until hour-end
+        (when they resolve) or until interrupted by an encounter.
+        
+        Args:
+            target: Entity or location to engage with
+            engagement_type: Type of engagement (COMBAT, ROBBERY, etc.)
+            can_be_interrupted: Whether this engagement can be broken by encounters
+            
+        Returns:
+            The created Engagement
+        """
+        # Store current action in case we need to resume after interruption
+        original = self.current_action if self.current_action else self._interrupted_action
+        
+        engagement = Engagement(
+            engagement_type=engagement_type,
+            initiator=self,
+            target=target,
+            started_hour=getattr(self, 'world', None) and self.world.time.current_hour or 0,
+            can_be_interrupted=can_be_interrupted,
+            original_action=original,
+        )
+        self.current_engagement = engagement
+        
+        # If target is also a Scheduled entity, make them aware of the engagement
+        if hasattr(target, 'current_engagement') and target.current_engagement is None:
+            target.current_engagement = engagement
+        
+        return engagement
+    
+    def disengage(self, reason: str = "") -> Optional[ScheduledAction]:
+        """
+        Break current engagement. Called when interrupted or when engagement
+        is forcibly ended (e.g., target died).
+        
+        Args:
+            reason: Why the engagement ended (for logging/thinking)
+            
+        Returns:
+            The original action to potentially resume, or None
+        """
+        if not self.current_engagement:
+            return None
+        
+        original_action = self.current_engagement.original_action
+        target = self.current_engagement.target
+        
+        # Clear target's engagement reference if they were tracking this
+        if hasattr(target, 'current_engagement'):
+            if target.current_engagement is self.current_engagement:
+                target.current_engagement = None
+        
+        self.current_engagement = None
+        
+        # Log the disengagement if entity can think
+        if hasattr(self, 'think') and reason:
+            self.think(reason)
+        
+        return original_action
+    
+    def is_engaged(self) -> bool:
+        """Check if currently in an engagement."""
+        return self.current_engagement is not None
+    
+    def is_engaged_with(self, entity: Any) -> bool:
+        """Check if currently engaged with a specific entity."""
+        if not self.current_engagement:
+            return False
+        return self.current_engagement.involves(entity)
+    
+    def try_resume_after_disengage(self) -> bool:
+        """
+        After disengaging, try to resume the original scheduled action.
+        
+        Returns:
+            True if successfully resumed an action, False otherwise
+        """
+        original = self.disengage()
+        if original and hasattr(original.target, 'is_alive'):
+            # Check if original target is still valid
+            if not original.target.is_alive:
+                return False
+        
+        if original:
+            original.state = ActionState.IN_PROGRESS
+            self.current_action = original
+            return True
+        return False
+    
+    def on_hour_end(self, hour: int) -> None:
+        """
+        Called at the end of each hour. Resolve any active engagements.
+        Override in subclasses for entity-specific resolution logic.
+        
+        Args:
+            hour: The hour that just ended
+        """
+        # Default: just clear the engagement without resolution
+        # Subclasses override to implement actual resolution
+        if self.current_engagement:
+            self.current_engagement = None
+    
+    # ==================== End Engagement System ====================
+
     def clear_schedule(self) -> None:
-        """Clear all scheduled actions."""
+        """Clear all scheduled actions and engagements."""
         self.schedule = []
         self.current_action = None
         self._interrupted_action = None
+        if self.current_engagement:
+            self.disengage("Day ends.")
     
     def on_dawn(self) -> None:
         """Called at dawn - wake up and build schedule."""

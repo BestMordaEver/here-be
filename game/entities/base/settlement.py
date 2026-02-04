@@ -52,8 +52,11 @@ class Settlement(Entity, Thinking):
         return False
     
     def die(self, reason) -> None:
-        """Handle settlement death/depletion."""
+        """Handle settlement death/depletion. Stores blessings in ruins if applicable."""
         super().die(reason)
+        # If this settlement has the Ruins mixin, store blessings for pillaging
+        if hasattr(self, 'on_become_ruins'):
+            self.on_become_ruins()
     
     def send_caravan(self, destination, mission, target_spirit=None) -> 'Caravan':
         """Unified method to create and send a caravan.

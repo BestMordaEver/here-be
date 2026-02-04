@@ -7,7 +7,8 @@ from .expansion import ExpansionMixin
 from .mortal import Mortal
 from .scheduled import (
     Scheduled, ScheduledAction, ActionType, ActionState,
-    DayScheduler, PlannedAction, SCHEDULE_START_HOUR, SCHEDULE_END_HOUR
+    DayScheduler, PlannedAction, SCHEDULE_START_HOUR, SCHEDULE_END_HOUR,
+    Engagement, EngagementType
 )
 from .aging import Aging
 from .ruins import Ruins
@@ -19,5 +20,6 @@ __all__ = [
     "Settlement", "ExpansionMixin", "Mortal",
     "Scheduled", "ScheduledAction", "ActionType", "ActionState",
     "DayScheduler", "PlannedAction", "SCHEDULE_START_HOUR", "SCHEDULE_END_HOUR",
+    "Engagement", "EngagementType",
     "Aging", "Ruins", "SettlementEventsMixin", "SettlementEvent"
 ]

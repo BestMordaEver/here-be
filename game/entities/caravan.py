@@ -2,7 +2,10 @@
 from enum import Enum
 from typing import TYPE_CHECKING, Dict, Any, Optional
 
-from .base import Coordinates, Mobile, Thinking, Settlement, Mortal, Scheduled, ActionType, ScheduledAction
+from .base import (
+    Coordinates, Mobile, Thinking, Settlement, Mortal, Scheduled, 
+    ActionType, ScheduledAction, EngagementType
+)
 
 if TYPE_CHECKING:
     from game.world import World
@@ -222,18 +225,24 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
             self.die("no refuge")
     
     def check_for_encounters(self) -> Optional[Mobile]:
-        """Check for threats."""
+        """Check for threats. Caravans are passive - they notice but don't initiate."""
         nearby = self.get_nearby_entities(FEAR_RADIUS)
         
         for entity in nearby:
-            if entity.__class__.__name__ in ('Dragon', 'Bandit'):
+            # Only flee from dragons, bandits will engage us
+            if entity.__class__.__name__ == 'Dragon' and entity.is_alive:
                 return entity
         
         return None
     
     def react_to_encounter(self, other: 'Mobile') -> Optional[ScheduledAction]:
-        """React to threats by fleeing."""
+        """React to threats by fleeing from dragons."""
         if other.__class__.__name__ == 'Dragon':
+            # If we're being robbed, the robbery is interrupted by dragon fear
+            if self.is_engaged():
+                # The bandit will disengage due to their own fear check
+                pass
+            
             self.fleeing_from = other
             self._flee_to_settlement()
             self.think("A dragon! We must flee!")
@@ -243,12 +252,27 @@ class Caravan(Mortal, Mobile, Thinking, Scheduled):
                 priority=100
             )
         
-        if other.__class__.__name__ == 'Bandit':
-            # Don't flee immediately, but be aware
-            self.think("Bandits nearby...")
-            return None  # Let heroes protect us
-        
+        # Caravans don't react to bandits - they are passive targets
+        # The bandit initiates robbery, heroes interrupt
         return None
+    
+    def on_hour_end(self, hour: int) -> None:
+        """
+        Resolve any engagement at hour-end.
+        For caravans, this is usually being the target of robbery.
+        """
+        if not self.current_engagement:
+            return
+        
+        # If we're being robbed, the bandit's on_hour_end handles resolution
+        # We just need to clear our engagement state
+        self.current_engagement = None
+        
+        # Continue our mission if still alive
+        if self.is_alive and self.destination:
+            if hasattr(self.destination, 'coordinates'):
+                self.set_destination(self.destination.coordinates)
+            self.think("We continue our journey.")
     
     def die(self, reason: str) -> None:
         """Handle caravan death."""

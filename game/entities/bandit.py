@@ -3,7 +3,10 @@ from enum import Enum
 from random import random, choice
 from typing import TYPE_CHECKING, Dict, Any, List, Optional
 
-from .base import Coordinates, Mobile, Mortal, Settlement, Scheduled, ActionType, ScheduledAction, Aging
+from .base import (
+    Coordinates, Mobile, Mortal, Settlement, Scheduled, 
+    ActionType, ScheduledAction, Aging, EngagementType
+)
 
 if TYPE_CHECKING:
     from game.world import World
@@ -296,8 +299,11 @@ class Bandit(Mortal, Mobile, Scheduled, Aging):
             self.complete_current_action()
     
     def _execute_attack(self) -> None:
-        """Execute an attack on target using combat resolution."""
-        from game.world.combat import resolve_attack
+        """
+        Initiate engagement with target. Resolution happens at hour-end.
+        For caravans: robbery. For settlements: raid. For heroes: combat.
+        """
+        from game.world.combat import initiate_robbery, initiate_combat
         
         target = self.target_entity
         
@@ -305,28 +311,51 @@ class Bandit(Mortal, Mobile, Scheduled, Aging):
             self.complete_current_action()
             return
         
-        resolve_attack(self, target, self.world)
-        self.complete_current_action()
+        target_type = target.__class__.__name__
+        
+        if target_type == 'Caravan':
+            # Initiate robbery - doesn't check for heroes, that's an interrupt
+            initiate_robbery(self, target, self.world)
+        elif target_type in ('Village', 'City'):
+            # Raid settlement - also via robbery engagement
+            initiate_robbery(self, target, self.world)
+        elif target_type == 'Hero':
+            # Engage hero in combat - we don't know their mood yet!
+            initiate_combat(self, target, self.world)
+        else:
+            # Fallback to legacy instant resolution
+            from game.world.combat import resolve_attack
+            resolve_attack(self, target, self.world)
+            self.complete_current_action()
     
     def _execute_pillage(self) -> None:
-        """Pillage a treasury or ruins."""
+        """Pillage a treasury or ruins using engagement system."""
+        from game.world.combat import initiate_pillage
+        
         target = self.target_entity
         
         if not target:
             self.complete_current_action()
             return
         
-        # Steal blessings/treasure
-        if hasattr(target, 'treasure') and target.treasure > 0:
-            take = min(MAX_BLESSINGS - self.blessings, target.treasure)
-            self.blessings += take
-            target.treasure -= take
-            self.days_since_robbery = 0
+        # Check if target can be pillaged
+        can_pillage = False
+        if hasattr(target, 'can_be_pillaged') and target.can_be_pillaged():
+            can_pillage = True
+        elif hasattr(target, 'ruin_blessings') and target.ruin_blessings > 0:
+            can_pillage = True
+        elif hasattr(target, 'treasure') and target.treasure > 0:
+            can_pillage = True
         
-        self.complete_current_action()
+        if can_pillage:
+            initiate_pillage(self, target, self.world)
+            # Don't complete action - engagement resolves at hour-end
+        else:
+            self.think("Nothing left to take.")
+            self.complete_current_action()
     
     def check_for_encounters(self) -> Optional[Mobile]:
-        """Check for dragons (flee) or heroes (danger)."""
+        """Check for dragons (flee). Heroes don't scare bandits - bandits don't know their mood."""
         nearby = self.get_nearby_entities(self.world, FEAR_RADIUS)
         
         for entity in nearby:
@@ -334,17 +363,18 @@ class Bandit(Mortal, Mobile, Scheduled, Aging):
             if entity.__class__.__name__ == 'Dragon':
                 return entity
             
-            # Fear vengeful heroes
-            if entity.__class__.__name__ == 'Hero':
-                if hasattr(entity, 'mood') and entity.mood == 'vengeful':
-                    return entity
+            # Note: Bandits do NOT flee from heroes preemptively.
+            # They don't know the hero's mood until combat resolves.
         
         return None
     
     def react_to_encounter(self, other: 'Mobile') -> Optional[ScheduledAction]:
-        """React to encounters - flee from dragons and heroes."""
+        """React to encounters - flee from dragons only."""
         if other.__class__.__name__ == 'Dragon':
-            # Flee from dragon
+            # Flee from dragon - disengage from any current engagement
+            if self.is_engaged():
+                self.disengage("A dragon! I must flee!")
+            
             self.fleeing_from = other
             self.flee_from(other)
             return ScheduledAction(
@@ -354,18 +384,7 @@ class Bandit(Mortal, Mobile, Scheduled, Aging):
                 priority=100
             )
         
-        if other.__class__.__name__ == 'Hero':
-            if hasattr(other, 'mood') and other.mood == 'vengeful':
-                # Try to flee from vengeful hero
-                self.fleeing_from = other
-                self.flee_from(other)
-                return ScheduledAction(
-                    hour=self.world.time.current_hour,
-                    action_type=ActionType.FLEE,
-                    target=None,
-                    priority=100
-                )
-        
+        # Bandits don't flee from heroes - they don't know the mood
         return None
     
     def update_movement(self) -> None:
@@ -388,6 +407,29 @@ class Bandit(Mortal, Mobile, Scheduled, Aging):
                     self.blessings += taken
                 break
     
+    def on_hour_end(self, hour: int) -> None:
+        """
+        Resolve any active engagement at hour-end.
+        This is where robbery/combat outcomes are determined.
+        """
+        if not self.current_engagement:
+            return
+        
+        from game.world.combat import resolve_engagement
+        
+        # Resolve the engagement
+        resolve_engagement(self.current_engagement, self.world)
+        
+        # Clear engagement and complete action
+        self.current_engagement = None
+        self.complete_current_action()
+        
+        # Try to resume previous action if we were interrupted into this engagement
+        if self._interrupted_action:
+            if hasattr(self._interrupted_action.target, 'is_alive'):
+                if self._interrupted_action.target.is_alive:
+                    self.resume_after_encounter()
+
     def serialize(self) -> Dict[str, Any]:
         """Serialize for JSON output."""
         data = super().serialize()

@@ -5,7 +5,7 @@ from math import atan2, degrees
 from random import randint, choice, random
 from typing import TYPE_CHECKING, Dict, Any, List, Optional
 
-from .base import Coordinates, Mobile, Named, Thinking, Mortal, Scheduled, ActionType, ScheduledAction, ActionState, Aging
+from .base import Coordinates, Mobile, Named, Thinking, Mortal, Scheduled, ActionType, ScheduledAction, ActionState, Aging, EngagementType
 
 if TYPE_CHECKING:
     from game.world import World
@@ -645,21 +645,33 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             self.complete_current_action()
     
     def _complete_feeding(self) -> None:
-        """Complete a feeding action."""
+        """
+        Initiate feeding engagement with target. Resolution happens at hour-end.
+        Herbivores just graze (instant), carnivores/anthropophages hunt (engagement).
+        """
         if self.current_target and hasattr(self.current_target, 'is_alive'):
             if self.current_target.is_alive:
                 if self.is_carnivore or self.is_anthropophage:
-                    # Kill the target
-                    self.current_target.die(f"eaten by {self.name}")
-                self.think("My hunger is sated.")
+                    # Start feeding engagement - target might escape if interrupted
+                    self.engage(self.current_target, EngagementType.FEEDING, can_be_interrupted=False)
+                    self.think("Hunger drives me.")
+                    # Don't complete action - let on_hour_end handle resolution
+                    self.current_target = None
+                    return
+                else:
+                    # Herbivore - instant grazing
+                    self.think("My hunger is sated.")
         
         self.complete_current_action()
         self.current_target = None
     
     def _complete_tending(self) -> None:
-        """Complete tending a spirit. Druid type tends all spirits in range."""
+        """
+        Complete tending a spirit. Uses engagement for single spirits.
+        Druid type tends all spirits in range instantly (area effect).
+        """
         if self.dragon_type == 'druid':
-            # Area tenders bless all spirits within radius
+            # Area tenders bless all spirits within radius - instant
             count = 0
             for entity in self.world.entities:
                 if entity.__class__.__name__ == 'Spirit' and entity.is_alive:
@@ -671,22 +683,39 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
                 self.think(f"I bless {count} spirits with my presence.")
             else:
                 self.think("The spirits here already flourish.")
+            self.complete_current_action()
+            self.current_target = None
         else:
-            # Normal dragons tend single spirit
+            # Normal dragons create tending engagement with single spirit
             if self.current_target and self.current_target.__class__.__name__ == 'Spirit':
-                if not getattr(self.current_target, 'has_blessing', False):
-                    self.current_target.has_blessing = True
-                    self.think("I bestow my blessing upon this spirit.")
-        
-        self.complete_current_action()
-        self.current_target = None
+                self.engage(self.current_target, EngagementType.TENDING)
+                self.think("I commune with the spirit.")
+                # Don't complete action - let on_hour_end handle resolution
+                self.current_target = None
+            else:
+                self.complete_current_action()
+                self.current_target = None
     
     def _complete_attack(self) -> None:
-        """Complete an attack action using combat resolution."""
-        from game.world.combat import resolve_attack
+        """
+        Initiate combat engagement with target. Resolution happens at hour-end.
+        Falls back to legacy instant resolution for non-engagement-aware targets.
+        """
+        from game.world.combat import initiate_combat, resolve_attack
         
         if self.current_target and hasattr(self.current_target, 'is_alive') and self.current_target.is_alive:
-            resolve_attack(self, self.current_target, self.world)
+            target = self.current_target
+            target_type = target.__class__.__name__
+            
+            # Use engagement system for entities that support it
+            if target_type in ('Hero', 'Bandit', 'Caravan'):
+                initiate_combat(self, target, self.world)
+                # Don't complete action - let on_hour_end handle resolution
+                self.current_target = None
+                return
+            else:
+                # Legacy instant resolution for settlements, camps, etc.
+                resolve_attack(self, target, self.world)
         
         self.complete_current_action()
         self.current_target = None
@@ -696,44 +725,57 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         nearby = self.get_nearby_entities(self.world, SCARE_RADIUS)
         
         for entity in nearby:
-            # Bandits flee from dragons
-            if entity.__class__.__name__ == 'Bandit':
+            # Bandits flee from dragons - including if they're engaged
+            if entity.__class__.__name__ == 'Bandit' and entity.is_alive:
                 return entity
             
             # Good dragons protect humans from threats
             if self.is_good:
                 if entity.__class__.__name__ in ('Caravan', 'Hero'):
-                    # Check if they're being threatened
+                    # Check if they're being threatened (engaged by attacker)
+                    if hasattr(entity, 'current_engagement') and entity.current_engagement:
+                        engagement = entity.current_engagement
+                        if engagement.engagement_type in (EngagementType.ROBBERY, EngagementType.COMBAT):
+                            if engagement.initiator.is_alive:
+                                return engagement.initiator
+                    # Also check for nearby bandits
                     for other in self.get_nearby_entities(self.world, PROTECTION_RADIUS):
-                        if other.__class__.__name__ == 'Bandit':
-                            return other  # Return the threat to deal with
+                        if other.__class__.__name__ == 'Bandit' and other.is_alive:
+                            return other
         
         # Territorial dragons attack nearby humans when near their domain
         if self.is_territorial and self.domain:
             if self.get_distance(self.domain.coordinates) <= TERRITORIAL_RADIUS:
                 for entity in nearby:
-                    if entity.__class__.__name__ in ('Hero', 'Caravan', 'Bandit'):
+                    if entity.__class__.__name__ in ('Hero', 'Caravan', 'Bandit') and entity.is_alive:
                         return entity
         
         # Evil dragons attack humans near spirits they are tending
         if self.is_evil and self.current_action:
             if self.current_action.action_type == ActionType.TEND_SPIRIT:
                 for entity in nearby:
-                    if entity.__class__.__name__ in ('Hero', 'Caravan', 'Bandit'):
+                    if entity.__class__.__name__ in ('Hero', 'Caravan', 'Bandit') and entity.is_alive:
                         return entity
         
         return None
     
     def react_to_encounter(self, other: 'Mobile') -> Optional[ScheduledAction]:
         """React to an encountered entity."""
-        # Scare bandits away (unless we want to attack them)
+        # Scare bandits away - interrupt their engagements
         if other.__class__.__name__ == 'Bandit':
+            # Force bandit to disengage and flee
+            if hasattr(other, 'is_engaged') and other.is_engaged():
+                if hasattr(other, 'disengage'):
+                    other.disengage("A dragon! I must flee!")
+            
             if not self.is_territorial and not self.is_evil:
                 self.think("A bandit flees before me.")
-                return None  # No action needed, bandit will flee
+                return None  # No action needed, bandit's encounter check will make it flee
         
         # Good dragons protect humans from bandits
         if self.is_good and other.__class__.__name__ == 'Bandit':
+            from game.world.combat import initiate_combat
+            initiate_combat(self, other, self.world)
             self.think("I shall protect the innocent.")
             return ScheduledAction(
                 hour=self.world.time.current_hour,
@@ -747,6 +789,8 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         if self.is_territorial and self.domain:
             if self.get_distance(self.domain.coordinates) <= TERRITORIAL_RADIUS:
                 if other.__class__.__name__ in ('Hero', 'Caravan', 'Bandit'):
+                    from game.world.combat import initiate_combat
+                    initiate_combat(self, other, self.world)
                     self.think("Intruders in my territory!")
                     return ScheduledAction(
                         hour=self.world.time.current_hour,
@@ -760,6 +804,8 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
         if self.is_evil and self.current_action:
             if self.current_action.action_type == ActionType.TEND_SPIRIT:
                 if other.__class__.__name__ in ('Hero', 'Caravan', 'Bandit'):
+                    from game.world.combat import initiate_combat
+                    initiate_combat(self, other, self.world)
                     self.think("You dare approach while I commune with the spirit?")
                     return ScheduledAction(
                         hour=self.world.time.current_hour,
@@ -768,8 +814,6 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
                         priority=10,
                         metadata={'circled': True}
                     )
-        
-        return None
         
         return None
     
@@ -781,6 +825,23 @@ class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
             return
         
         self.build_schedule()
+    
+    def on_hour_end(self, hour: int) -> None:
+        """
+        Resolve any active engagement at hour-end.
+        Dragon combat outcomes are determined here.
+        """
+        if not self.current_engagement:
+            return
+        
+        from game.world.combat import resolve_engagement
+        
+        # Resolve the engagement
+        resolve_engagement(self.current_engagement, self.world)
+        
+        # Clear engagement and complete action
+        self.current_engagement = None
+        self.complete_current_action()
     
     def die(self, reason: str) -> None:
         """Handle dragon death - domain becomes treasury."""

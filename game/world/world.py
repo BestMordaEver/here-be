@@ -131,10 +131,22 @@ class World:
             if hasattr(entity, 'on_hour'):
                 entity.on_hour(hour)
     
+    def _trigger_hour_end(self, hour: int) -> None:
+        """Trigger hour-end event for all scheduled entities. Resolves engagements."""
+        for entity in list(self.entities):
+            if hasattr(entity, 'on_hour_end'):
+                entity.on_hour_end(hour)
+    
     def _process_hour(self, game_time: GameTime) -> None:
         """Process a single hour of game time."""
         hour = game_time.hour
         period = game_time.get_period()
+        
+        # Resolve previous hour's engagements before starting new hour
+        # (Skip at dawn since we're just starting the day)
+        if period != TimeOfDay.DAWN and game_time.is_active_hours():
+            previous_hour = (hour - 1) % 24
+            self._trigger_hour_end(previous_hour)
         
         # Handle period transitions
         if period == TimeOfDay.DAWN:
@@ -142,6 +154,8 @@ class World:
             # Day-based spawning
             self._daily_spawns(game_time.day)
         elif period == TimeOfDay.DUSK:
+            # Resolve final hour before dusk
+            self._trigger_hour_end(hour - 1)
             self._trigger_dusk()
         elif period == TimeOfDay.NIGHT and hour == NIGHT_HOUR:
             self._trigger_night()
