@@ -234,28 +234,83 @@ class EngagementType(Enum):
     FEEDING = "feeding"         # Dragon/predator feeding
     PROTECTING = "protecting"   # Hero protecting settlement/caravan
     PILLAGING = "pillaging"     # Looting ruins/treasury/domain
+    RESTING = "resting"         # Solo - entity resting
+    HOARDING = "hoarding"       # Solo - dragon tending hoard
 
 
 @dataclass
 class Engagement:
     """
-    Represents an ongoing interaction between entities that persists until
-    hour-end or interruption. Resolution happens at on_hour_end().
+    Represents an ongoing interaction that persists until hour-end or interruption.
+    Resolution happens at on_hour_end().
+    
+    Engagements support arbitrary participants:
+    - Solo activities (resting, hoarding) have one participant
+    - Standard interactions (robbery, tending) have two
+    - Group activities (combat with multiple heroes) can have many
+    
+    Participants can join/leave via the Scheduled mixin methods.
     """
     engagement_type: EngagementType
-    initiator: 'Mobile'           # Who started the engagement
-    target: Any                   # Entity or location being engaged with
+    started_by: 'Mobile'          # Who initiated the engagement
     started_hour: int             # Hour when engagement began
-    can_be_interrupted: bool = True  # Some engagements (feeding?) may not be interruptible
-    original_action: Optional[ScheduledAction] = None  # What initiator was doing before (for resume)
+    participants: List['Mobile'] = field(default_factory=list)  # All involved entities
+    location: Any = None          # Optional location (for pillaging ruins, etc.)
+    can_be_interrupted: bool = True  # Some engagements may not be interruptible
+    blocks_night: bool = False    # If True, participants delay sleep until disengaged
+    
+    def __post_init__(self):
+        """Ensure started_by is in participants."""
+        if self.started_by not in self.participants:
+            self.participants.append(self.started_by)
     
     def __str__(self) -> str:
-        target_name = getattr(self.target, 'name', None) or str(getattr(self.target, 'coordinates', self.target))
-        return f"{self.engagement_type.value} with {target_name} (started {self.started_hour}:00)"
+        participant_names = [getattr(p, 'name', str(p)) for p in self.participants]
+        location_str = ""
+        if self.location:
+            loc_name = getattr(self.location, 'name', None) or str(getattr(self.location, 'coordinates', self.location))
+            location_str = f" at {loc_name}"
+        return f"{self.engagement_type.value} [{', '.join(participant_names)}]{location_str} (started {self.started_hour}:00)"
     
     def involves(self, entity: 'Mobile') -> bool:
         """Check if an entity is part of this engagement."""
-        return entity is self.initiator or entity is self.target
+        return entity in self.participants
+    
+    def add_participant(self, entity: 'Mobile') -> bool:
+        """
+        Add a participant to the engagement.
+        
+        Returns:
+            True if added, False if already participating
+        """
+        if entity in self.participants:
+            return False
+        self.participants.append(entity)
+        return True
+    
+    def remove_participant(self, entity: 'Mobile') -> bool:
+        """
+        Remove a participant from the engagement.
+        
+        Returns:
+            True if removed, False if wasn't participating
+        """
+        if entity not in self.participants:
+            return False
+        self.participants.remove(entity)
+        return True
+    
+    def is_solo(self) -> bool:
+        """Check if this is a solo engagement (one participant)."""
+        return len(self.participants) == 1
+    
+    def is_empty(self) -> bool:
+        """Check if engagement has no participants left."""
+        return len(self.participants) == 0
+    
+    def get_others(self, entity: 'Mobile') -> List['Mobile']:
+        """Get all participants except the given entity."""
+        return [p for p in self.participants if p is not entity]
 
 
 class Scheduled:
@@ -264,8 +319,9 @@ class Scheduled:
     def __init__(self):
         self.schedule: List[ScheduledAction] = []
         self.current_action: Optional[ScheduledAction] = None
-        self._interrupted_action: Optional[ScheduledAction] = None  # Action we were doing before interruption
+        self._action_stack: List[ScheduledAction] = []  # Stack of interrupted actions for nested resume
         self.is_sleeping = False
+        self._night_blocked = False  # If True, delay sleep until unblocked
         
         # Engagement system
         self.current_engagement: Optional[Engagement] = None  # Active engagement if any
@@ -278,7 +334,7 @@ class Scheduled:
         """
         self.schedule = []
         self.current_action = None
-        self._interrupted_action = None
+        self._action_stack.clear()
     
     def add_scheduled_action(
         self,
@@ -422,7 +478,8 @@ class Scheduled:
     
     def interrupt_for_encounter(self, encounter_action: ScheduledAction) -> bool:
         """
-        Interrupt current action for an encounter.
+        Interrupt current action for an encounter. Pushes current action onto
+        the stack so it can be resumed later, even after nested interruptions.
         
         Args:
             encounter_action: The reactive action to take (flee, attack, protect)
@@ -435,7 +492,7 @@ class Scheduled:
         
         if self.current_action and self.current_action.state == ActionState.IN_PROGRESS:
             self.current_action.state = ActionState.INTERRUPTED
-            self._interrupted_action = self.current_action
+            self._action_stack.append(self.current_action)
         
         self.current_action = encounter_action
         encounter_action.state = ActionState.IN_PROGRESS
@@ -443,86 +500,199 @@ class Scheduled:
     
     def resume_after_encounter(self) -> bool:
         """
-        Try to resume the interrupted action after encounter resolves.
+        Try to resume the most recently interrupted action after encounter resolves.
+        Pops from the action stack, supporting nested interruptions.
         
         Returns:
             True if there was an action to resume
         """
-        if self._interrupted_action:
-            self.current_action = self._interrupted_action
-            self.current_action.state = ActionState.IN_PROGRESS
-            self._interrupted_action = None
-            return True
-        return False
+        if not self._action_stack:
+            return False
+        
+        action = self._action_stack.pop()
+        
+        # Check if target is still valid
+        if action.target and hasattr(action.target, 'is_alive'):
+            if not action.target.is_alive:
+                # Target died, try resuming the next action in stack
+                return self.resume_after_encounter()
+        
+        action.state = ActionState.IN_PROGRESS
+        self.current_action = action
+        return True
+    
+    def push_current_action(self) -> None:
+        """
+        Push current action onto the stack without marking it interrupted.
+        Use when temporarily switching to another action that will resolve quickly.
+        """
+        if self.current_action and self.current_action.state == ActionState.IN_PROGRESS:
+            self._action_stack.append(self.current_action)
+            self.current_action = None
+    
+    def peek_interrupted_action(self) -> Optional[ScheduledAction]:
+        """
+        View the most recently interrupted action without removing it from stack.
+        
+        Returns:
+            The action that would be resumed, or None if stack is empty
+        """
+        return self._action_stack[-1] if self._action_stack else None
+    
+    def clear_action_stack(self) -> None:
+        """Clear all interrupted actions from the stack."""
+        self._action_stack.clear()
     
     # ==================== Engagement System ====================
     
     def engage(
         self,
-        target: Any,
         engagement_type: EngagementType,
+        *others: 'Mobile',
+        location: Any = None,
         can_be_interrupted: bool = True,
+        blocks_night: bool = False,
     ) -> Engagement:
         """
-        Start an engagement with a target. Engagements persist until hour-end
-        (when they resolve) or until interrupted by an encounter.
+        Start or join an engagement. Supports solo activities and multi-participant interactions.
+        
+        Current action is pushed onto the stack so it can be resumed after disengagement,
+        even if there are nested engagements/interruptions.
         
         Args:
-            target: Entity or location to engage with
-            engagement_type: Type of engagement (COMBAT, ROBBERY, etc.)
+            engagement_type: Type of engagement (COMBAT, ROBBERY, RESTING, etc.)
+            *others: Other entities to engage with (can be empty for solo activities)
+            location: Optional location for place-based engagements (ruins, treasury)
             can_be_interrupted: Whether this engagement can be broken by encounters
+            blocks_night: If True, participants delay sleep until disengaged
             
         Returns:
-            The created Engagement
+            The created or joined Engagement
+            
+        Examples:
+            # Solo engagement (dragon hoarding)
+            dragon.engage(EngagementType.HOARDING)
+            
+            # Two-participant engagement (robbery)
+            bandit.engage(EngagementType.ROBBERY, caravan)
+            
+            # Multi-participant (hero joins ongoing combat)
+            hero.join_engagement(ongoing_combat)
         """
-        # Store current action in case we need to resume after interruption
-        original = self.current_action if self.current_action else self._interrupted_action
+        # Push current action onto stack for potential resume after disengagement
+        self.push_current_action()
         
+        # Check if any of the others are already in an engagement we should join
+        for other in others:
+            if hasattr(other, 'current_engagement') and other.current_engagement is not None:
+                # Join existing engagement
+                return self.join_engagement(other.current_engagement)
+        
+        # Create new engagement
         engagement = Engagement(
             engagement_type=engagement_type,
-            initiator=self,
-            target=target,
+            started_by=self,
             started_hour=getattr(self, 'world', None) and self.world.time.current_hour or 0,
+            participants=[self],  # Will be expanded in __post_init__ but we control it here
+            location=location,
             can_be_interrupted=can_be_interrupted,
-            original_action=original,
+            blocks_night=blocks_night,
         )
+        
+        # Don't rely on __post_init__ since we set participants explicitly
         self.current_engagement = engagement
         
-        # If target is also a Scheduled entity, make them aware of the engagement
-        if hasattr(target, 'current_engagement') and target.current_engagement is None:
-            target.current_engagement = engagement
+        if blocks_night:
+            self._night_blocked = True
+        
+        # Add other participants
+        for other in others:
+            engagement.add_participant(other)
+            if hasattr(other, 'current_engagement'):
+                # Push their current action onto stack too
+                if hasattr(other, 'push_current_action'):
+                    other.push_current_action()
+                other.current_engagement = engagement
+                if blocks_night and hasattr(other, '_night_blocked'):
+                    other._night_blocked = True
         
         return engagement
     
-    def disengage(self, reason: str = "") -> Optional[ScheduledAction]:
+    def join_engagement(self, engagement: Engagement) -> Engagement:
         """
-        Break current engagement. Called when interrupted or when engagement
-        is forcibly ended (e.g., target died).
+        Join an existing engagement as a participant.
         
         Args:
-            reason: Why the engagement ended (for logging/thinking)
+            engagement: The engagement to join
             
         Returns:
-            The original action to potentially resume, or None
+            The engagement (for chaining)
+        """
+        if self.current_engagement is engagement:
+            return engagement  # Already in this engagement
+        
+        # Leave current engagement if any
+        if self.current_engagement:
+            self.disengage("Joining another engagement.")
+        
+        # Push current action onto stack for potential resume
+        self.push_current_action()
+        
+        engagement.add_participant(self)
+        self.current_engagement = engagement
+        
+        if engagement.blocks_night:
+            self._night_blocked = True
+        
+        return engagement
+    
+    def disengage(self, reason: str = "") -> bool:
+        """
+        Leave current engagement. Called when interrupted, when engagement
+        ends, or when entity chooses to leave.
+        
+        Args:
+            reason: Why leaving the engagement (for logging/thinking)
+            
+        Returns:
+            True if was engaged and successfully disengaged
         """
         if not self.current_engagement:
-            return None
+            return False
         
-        original_action = self.current_engagement.original_action
-        target = self.current_engagement.target
+        engagement = self.current_engagement
         
-        # Clear target's engagement reference if they were tracking this
-        if hasattr(target, 'current_engagement'):
-            if target.current_engagement is self.current_engagement:
-                target.current_engagement = None
+        # Remove self from participants
+        engagement.remove_participant(self)
         
+        # Clear our engagement reference
         self.current_engagement = None
+        self._night_blocked = False
         
         # Log the disengagement if entity can think
         if hasattr(self, 'think') and reason:
             self.think(reason)
         
-        return original_action
+        return True
+    
+    def disengage_and_resume(self, reason: str = "") -> bool:
+        """
+        Leave current engagement and try to resume the previous action.
+        
+        This is the typical flow when an engagement ends naturally - the entity
+        should go back to what they were doing before (e.g., dragon resumes
+        feeding after defending a city).
+        
+        Args:
+            reason: Why leaving the engagement (for logging/thinking)
+            
+        Returns:
+            True if successfully resumed a previous action
+        """
+        if not self.disengage(reason):
+            return False
+        
+        return self.resume_after_encounter()
     
     def is_engaged(self) -> bool:
         """Check if currently in an engagement."""
@@ -534,24 +704,28 @@ class Scheduled:
             return False
         return self.current_engagement.involves(entity)
     
+    def is_engaged_in(self, engagement_type: EngagementType) -> bool:
+        """Check if currently in a specific type of engagement."""
+        if not self.current_engagement:
+            return False
+        return self.current_engagement.engagement_type == engagement_type
+    
+    def get_engagement_partners(self) -> List['Mobile']:
+        """Get other participants in current engagement."""
+        if not self.current_engagement:
+            return []
+        return self.current_engagement.get_others(self)
+    
     def try_resume_after_disengage(self) -> bool:
         """
-        After disengaging, try to resume the original scheduled action.
+        Disengage and try to resume the previous action.
+        
+        Deprecated: Use disengage_and_resume() instead.
         
         Returns:
             True if successfully resumed an action, False otherwise
         """
-        original = self.disengage()
-        if original and hasattr(original.target, 'is_alive'):
-            # Check if original target is still valid
-            if not original.target.is_alive:
-                return False
-        
-        if original:
-            original.state = ActionState.IN_PROGRESS
-            self.current_action = original
-            return True
-        return False
+        return self.disengage_and_resume()
     
     def on_hour_end(self, hour: int) -> None:
         """
@@ -566,13 +740,35 @@ class Scheduled:
         if self.current_engagement:
             self.current_engagement = None
     
+    # ==================== Night Blocking ====================
+    
+    def block_night(self, reason: str = "") -> None:
+        """
+        Prevent this entity from sleeping until unblocked.
+        Use when critical situations require staying awake.
+        
+        Args:
+            reason: Why night is blocked (for logging)
+        """
+        self._night_blocked = True
+        if hasattr(self, 'think') and reason:
+            self.think(reason)
+    
+    def unblock_night(self) -> None:
+        """Allow this entity to sleep again."""
+        self._night_blocked = False
+    
+    def is_night_blocked(self) -> bool:
+        """Check if this entity is prevented from sleeping."""
+        return self._night_blocked
+    
     # ==================== End Engagement System ====================
 
     def clear_schedule(self) -> None:
         """Clear all scheduled actions and engagements."""
         self.schedule = []
         self.current_action = None
-        self._interrupted_action = None
+        self._action_stack.clear()
         if self.current_engagement:
             self.disengage("Day ends.")
     
@@ -586,7 +782,13 @@ class Scheduled:
         pass  # Override in subclasses (e.g., return home)
     
     def on_night(self) -> None:
-        """Called when night begins - go to sleep."""
+        """Called when night begins - go to sleep unless blocked."""
+        if self._night_blocked:
+            # Can't sleep yet - critical situation ongoing
+            if hasattr(self, 'think'):
+                self.think("Cannot rest while danger looms.")
+            return
+        
         self.is_sleeping = True
         self.clear_schedule()
         self.add_scheduled_action(
