@@ -1,6 +1,6 @@
 """Domain - a dragon's treasury and territory marker."""
-from .base import Coordinates, Entity, Mortal
-from typing import TYPE_CHECKING, Dict, Any, List, Tuple
+from ..base import Coordinates, Entity, Mortal
+from typing import TYPE_CHECKING, Dict, Any, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from game.world import World
@@ -14,6 +14,87 @@ PILLAGE_TREASURE_AMOUNT = 50  # Treasure gained from pillaging
 
 class Domain(Entity, Mortal):
     """A dragon's domain - their territory marker and treasury."""
+
+    # Valid spawn terrain by domain type
+    VALID_SPAWN_TERRAIN = {
+        'aquatic': ['water'],
+        'mountain': ['mountain'],
+        'verdant': ['field', 'forest'],
+        'scorched': ['field', 'water', 'mountain', 'forest'],  # Scorched can spawn anywhere
+    }
+    
+    @staticmethod
+    def validate_spawn_location(world: 'World', coordinates: Coordinates, domain_type: str) -> bool:
+        """
+        Validate that spawn coordinates match the domain type terrain.
+        
+        Args:
+            world: The game world
+            coordinates: Proposed spawn location
+            domain_type: One of 'aquatic', 'mountain', 'verdant', 'scorched'
+            
+        Returns:
+            True if location is valid for the domain type
+        """
+        x, y = coordinates
+        if x < 0 or y < 0 or x >= world.WIDTH or y >= world.HEIGHT:
+            return False
+        
+        height = world.height_map[y][x]
+        biome = world.get_biome_from_height(height)
+        
+        valid_biomes = Domain.VALID_SPAWN_TERRAIN.get(domain_type, [])
+        return biome in valid_biomes
+    
+    @staticmethod
+    def find_valid_spawn_location(world: 'World', domain_type: str, min_lair_distance: int = 30) -> Optional[Coordinates]:
+        """
+        Find a random valid spawn location for a dragon.
+        
+        Args:
+            world: The game world
+            domain_type: One of 'aquatic', 'mountain', 'verdant', 'scorched'
+            min_lair_distance: Minimum distance from other dragon lairs
+            
+        Returns:
+            Valid coordinates, or None if no suitable location found
+        """
+        from random import sample
+        
+        valid_biomes = Domain.VALID_SPAWN_TERRAIN.get(domain_type, [])
+        
+        # Get all valid coordinates
+        candidates = []
+        for y in range(world.HEIGHT):
+            for x in range(world.WIDTH):
+                height = world.height_map[y][x]
+                biome = world.get_biome_from_height(height)
+                if biome in valid_biomes:
+                    candidates.append((x, y))
+        
+        if not candidates:
+            return None
+        
+        # Get existing lair locations
+        lair_coords = []
+        for entity in world.entities:
+            if entity.__class__.__name__ == 'Domain' and entity.is_alive:
+                lair_coords.append(entity.coordinates)
+        
+        # Try random candidates until we find one far enough from lairs
+        for coords in sample(candidates, min(100, len(candidates))):
+            far_enough = True
+            for lair in lair_coords:
+                dx = abs(coords[0] - lair[0])
+                dy = abs(coords[1] - lair[1])
+                if max(dx, dy) < min_lair_distance:
+                    far_enough = False
+                    break
+            if far_enough:
+                return coords
+        
+        # No location found far enough from lairs
+        return None
     
     def __init__(self, world: 'World', coordinates: Coordinates, dragon: 'Dragon', is_scorched: bool = False):
         # Domain color matches dragon color
