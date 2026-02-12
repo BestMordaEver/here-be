@@ -1,141 +1,89 @@
 from typing import TYPE_CHECKING
-from random import random
+from random import choice, random
 from game.entities.base.scheduled import ActionType
+
 from . import finders
+from .types import DragonMood
 
 if TYPE_CHECKING:
-	from . import Dragon
-
-from enum import Enum
-
-class DragonMood(Enum):
-    """Dragon daily moods determining behavior."""
-    DREARY = "dreary"       # Tends hoard, attacks if not good
-    INSPIRED = "inspired"   # Tends hoard, travels to distant spirits
-    PENSIVE = "pensive"     # Feeds once, tends nearby spirit
-    HUNGRY = "hungry"       # Feeds twice, rests between (every 3 days)
-    COVETOUS = "covetous"   # Attacks settlement, steals blessing
+    from . import Dragon
 
 
-def build_schedule(self: Dragon) -> None:
-	"""Build the day's schedule based on mood."""
-	self.schedule = []
-	self.current_action = None
-	
-	# Ensure domain exists
-	if self.domain is None:
-		self.create_domain(self.world)
-	
-	self.mood = _determine_mood(self)
-	self.days_since_hungry += 1
-	
-	if self.mood == DragonMood.DREARY:
-		_schedule_dreary(self)
-	elif self.mood == DragonMood.INSPIRED:
-		_schedule_inspired(self)
-	elif self.mood == DragonMood.PENSIVE:
-		_schedule_pensive(self)
-	elif self.mood == DragonMood.HUNGRY:
-		_schedule_hungry(self)
-	elif self.mood == DragonMood.COVETOUS:
-		_schedule_covetous(self)
-	
-	# Always end day by returning home
-	self.add_scheduled_action(19, ActionType.RETURN_HOME, self.domain)
-	
-	self.think(f"Today I feel {self.mood.value}.")
+def build_schedule(dragon: Dragon) -> None:
+    """Build the day's schedule based on mood."""
+    dragon.current_action = None
+    
+    dragon.mood = _determine_mood(dragon)
+    dragon.days_since_hungry += 1
+    planner = dragon.plan_day()
+    
+    if dragon.mood == DragonMood.DREARY:
+        # Dreary: tend hoard, attack if not good.
+        planner.add(ActionType.TEND_HOARD)
+        if dragon.is_evil:
+            settlement = finders.find_settlement_target(dragon)
+            if settlement:
+                planner.add(ActionType.ATTACK, settlement)
 
-def _determine_mood(self) -> DragonMood:
-	"""Determine today's mood based on conditions."""
-	# Hungry every 3 days (unless greed)
-	if not self.is_greed and self.days_since_hungry >= 3:
-		self.days_since_hungry = 0
-		return DragonMood.HUNGRY
-	
-	# Greed dragons get covetous when they would be hungry
-	if self.is_greed and self.days_since_hungry >= 3:
-		self.days_since_hungry = 0
-		if self.is_good:  # Good dragons become inspired instead
-			return DragonMood.INSPIRED
-		return DragonMood.COVETOUS
-	
-	# Covetous for evil dragons occasionally
-	if self.is_evil and random() < 0.2:
-		if not self.is_good:  # Good dragons become inspired instead
-			return DragonMood.COVETOUS
-		return DragonMood.INSPIRED
-	
-	# Random between dreary, inspired, pensive
-	roll = random()
-	if roll < 0.3:
-		return DragonMood.DREARY
-	elif roll < 0.6:
-		return DragonMood.INSPIRED
-	else:
-		return DragonMood.PENSIVE
+    elif dragon.mood == DragonMood.INSPIRED:
+        # Inspired: tend hoard, visit distant spirits.
+        spirits = finders.find_spirits(dragon, distance_max=9999, distance_min=20, count=2, has_blessing=False)
+        
+        if spirits:
+            planner.add(ActionType.TEND_SPIRIT, spirits[0])
+        
+        planner.add(ActionType.TEND_HOARD)
+        
+        if len(spirits) > 1:
+            planner.add(ActionType.TEND_SPIRIT, spirits[1])
 
-def _schedule_dreary(self: Dragon) -> None:
-	"""Dreary: tend hoard, attack if not good."""
-	actions = [(ActionType.TEND_HOARD, None)]
-	if not self.is_good:
-		target = finders._find_human_target(self)
-		if target:
-			actions.append((ActionType.ATTACK, target))
-	if self.is_evil:
-		settlement = finders._find_settlement_target(self)
-		if settlement:
-			actions.append((ActionType.ATTACK, settlement))
-	self.schedule_actions(actions)
+    elif dragon.mood == DragonMood.PENSIVE:
+        # Pensive: feed once, tend nearby spirit.
+        planner.add(ActionType.FEED)
+        spirits = finders.find_spirits(dragon, has_blessing=False)
+        if spirits:
+            planner.add(ActionType.TEND_SPIRIT, spirits[0])
 
-def _schedule_inspired(self: Dragon) -> None:
-	"""Inspired: tend hoard, visit distant spirits."""
-	actions = [(ActionType.TEND_HOARD, None)]
-	spirits = finders._find_distant_spirits(self, count=2)
-	for spirit in spirits:
-		actions.append((ActionType.TEND_SPIRIT, spirit))
-	self.schedule_actions(actions)
+    elif dragon.mood == DragonMood.HUNGRY:
+        # Hungry: feed, rest, feed again.
+        planner.add(ActionType.FEED)
+        
+        if dragon.is_evil:
+            target = choice([finders.find_human_target(dragon), finders.find_settlement_target(dragon)])
+            planner.add(ActionType.ATTACK, target) if target else None
+        
+        planner.add(ActionType.REST)
+        
+        if not dragon.is_anthropophage:
+            planner.add(ActionType.FEED)
+        
+            if dragon.is_evil:
+                target = choice([finders.find_human_target(dragon), finders.find_settlement_target(dragon)])
+                planner.add(ActionType.ATTACK, target) if target else None
 
-def _schedule_pensive(self: Dragon) -> None:
-	"""Pensive: feed once, tend nearby spirit."""
-	actions = [(ActionType.FEED, None)]
-	spirit = finders._find_nearby_spirit(self)
-	if spirit:
-		actions.append((ActionType.TEND_SPIRIT, spirit))
-	self.schedule_actions(actions)
+    elif dragon.mood == DragonMood.COVETOUS:
+        planner.add(ActionType.ATTACK)
+    
+    planner.commit()
 
-def _schedule_hungry(self: Dragon) -> None:
-	"""Hungry: feed, rest, feed again."""
-	if self.is_anthropophage:
-		# Anthropophage attacks a settlement to feed
-		target = finders._find_settlement_target(self)
-		if target:
-			actions = [
-				(ActionType.ATTACK, target),
-				(ActionType.REST, None),
-			]
-		else:
-			actions = [
-				(ActionType.REST, None),
-			]
-	else:
-		actions = [
-			(ActionType.FEED, None),
-			(ActionType.REST, None),
-			(ActionType.FEED, None),
-		]
-	
-	# Evil dragons replace rest with attack
-	if self.is_evil:
-		target = finders._find_human_target(self)
-		if target:
-			actions = [(ActionType.ATTACK, target) if a[0] == ActionType.REST else a for a in actions]
-	
-	self.schedule_actions(actions)
-
-def _schedule_covetous(self: Dragon) -> None:
-	"""Covetous: attack settlement, steal blessing."""
-	settlement = finders._find_settlement_with_blessing(self)
-	if not settlement:
-		settlement = finders._find_settlement_target(self)
-	if settlement:
-		self.schedule_actions([(ActionType.ATTACK, settlement)])
+def _determine_mood(dragon: Dragon) -> DragonMood:
+    """Determine today's mood based on conditions."""
+    # Hungry every 3 days (unless greed)
+    if dragon.days_since_hungry >= 3:
+        dragon.days_since_hungry = 0
+        if dragon.is_greed:
+            return DragonMood.COVETOUS
+        return DragonMood.HUNGRY
+    
+    # Covetous occasionally
+    if not dragon.is_good and random() < 0.2:
+        return DragonMood.COVETOUS
+    
+    # Random between dreary, inspired, pensive
+    roll = random()
+    if roll < 0.3:
+        return DragonMood.DREARY
+    elif roll < 0.6:
+        return DragonMood.INSPIRED
+    else:
+        return DragonMood.PENSIVE

@@ -13,10 +13,13 @@ from typing import TYPE_CHECKING, Optional
 from random import choice
 
 if TYPE_CHECKING:
-    from game.world import World
-    from game.entities.base import Mobile, Engagement
+    from game.entities.base.settlement import Settlement
+    from game.entities.caravan import Caravan
+    from game.entities.bandit import Bandit
+    from game.entities.dragon import Dragon
+    from game.entities.hero.hero import Hero
 
-from game.entities.base import EngagementType
+from game.entities.base import Engagement, EngagementType
 
 
 # =============================================================================
@@ -24,27 +27,19 @@ from game.entities.base import EngagementType
 # These functions create engagements. Resolution happens at hour-end.
 # =============================================================================
 
-def initiate_robbery(bandit, target, world: 'World') -> Optional['Engagement']:
+def initiate_robbery(bandit: 'Bandit', target: 'Caravan | Settlement') -> Engagement:
     """
     Bandit initiates robbery on a caravan or settlement.
     Does NOT check for hero protection - that happens during the hour as an interrupt.
     
     Returns:
-        The created engagement, or None if initiation failed
+        The created engagement
     """
-    if not hasattr(bandit, 'engage'):
-        return None
-    
     engagement = bandit.engage(target, EngagementType.ROBBERY)
-    
-    if hasattr(bandit, 'think'):
-        target_name = getattr(target, 'name', target.__class__.__name__)
-        bandit.think(f"This {target_name} will make me rich.")
-    
     return engagement
 
 
-def initiate_combat(attacker, defender, world: 'World', can_be_interrupted: bool = True) -> Optional['Engagement']:
+def initiate_combat(attacker: 'Bandit | Hero | Dragon', defender, can_be_interrupted: bool = True) -> Engagement:
     """
     Initiate combat between two entities.
     Actual damage is dealt at resolution (on_hour_end).
@@ -56,35 +51,13 @@ def initiate_combat(attacker, defender, world: 'World', can_be_interrupted: bool
         can_be_interrupted: If False (e.g., blade dragons), heroes cannot protect
     
     Returns:
-        The created engagement, or None if initiation failed
+        The created engagement
     """
-    if not hasattr(attacker, 'engage'):
-        return None
-    
     engagement = attacker.engage(defender, EngagementType.COMBAT, can_be_interrupted=can_be_interrupted)
-    
-    # Log the initiation
-    attacker_type = attacker.__class__.__name__
-    defender_type = defender.__class__.__name__
-    
-    if hasattr(attacker, 'think'):
-        if attacker_type == 'Dragon':
-            attacker.think("I descend upon my prey.")
-        elif attacker_type == 'Hero':
-            attacker.think("Steel yourself!")
-        elif attacker_type == 'Bandit':
-            attacker.think("Time to fight!")
-    
-    if hasattr(defender, 'think'):
-        if defender_type == 'Hero':
-            defender.think("An enemy approaches!")
-        elif defender_type == 'Bandit':
-            defender.think("I must defend myself!")
-    
     return engagement
 
 
-def initiate_protection(protector, protected, world: 'World') -> Optional['Engagement']:
+def initiate_protection(protector, protected) -> Optional['Engagement']:
     """
     Hero (or good dragon) initiates protection of a target.
     
@@ -102,7 +75,7 @@ def initiate_protection(protector, protected, world: 'World') -> Optional['Engag
     return engagement
 
 
-def initiate_pillage(pillager, target, world: 'World') -> Optional['Engagement']:
+def initiate_pillage(pillager, target) -> Optional['Engagement']:
     """
     Hero or bandit initiates pillaging of ruins, treasury, or unguarded domain.
     
@@ -126,7 +99,7 @@ def initiate_pillage(pillager, target, world: 'World') -> Optional['Engagement']
 # These functions apply outcomes. Called from entity.on_hour_end().
 # =============================================================================
 
-def resolve_robbery(engagement: 'Engagement', world: 'World') -> None:
+def resolve_robbery(engagement: 'Engagement') -> None:
     """
     Resolve a robbery engagement at hour-end.
     Bandit steals blessing from caravan/settlement.
@@ -139,48 +112,35 @@ def resolve_robbery(engagement: 'Engagement', world: 'World') -> None:
         return
     
     if target_type == 'Caravan':
-        _resolve_caravan_robbery(bandit, target, world)
+        _resolve_caravan_robbery(bandit, target)
     elif target_type in ('Village', 'City'):
-        _resolve_settlement_robbery(bandit, target, world)
+        _resolve_settlement_robbery(bandit, target)
 
 
-def _resolve_caravan_robbery(bandit, caravan, world: 'World') -> None:
+def _resolve_caravan_robbery(bandit, caravan) -> None:
     """Resolve bandit robbing caravan - steal blessing if any."""
     if not caravan.is_alive:
         return
     
     if caravan.blessing:
+        caravan.blessing = False
         if bandit.blessings < 3:  # MAX_BLESSINGS
-            caravan.blessing = False
             bandit.blessings += 1
             bandit.days_since_robbery = 0
-            if hasattr(bandit, 'think'):
-                bandit.think("The blessing is mine!")
-        else:
-            # Blessing is lost - bandit can't carry more
-            caravan.blessing = False
-            if hasattr(bandit, 'think'):
-                bandit.think("I cannot carry more, but they shan't have it.")
-    else:
-        if hasattr(bandit, 'think'):
-            bandit.think("Nothing of value... a waste of time.")
     
     bandit.days_since_robbery = 0
 
 
-def _resolve_settlement_robbery(bandit, settlement, world: 'World') -> None:
+def _resolve_settlement_robbery(bandit, settlement) -> None:
     """Resolve bandit raiding settlement - deal damage, no mourning."""
     if not settlement.is_alive:
         return
     
     settlement.hurt(1, 'bandit raid')
     bandit.days_since_robbery = 0
-    
-    if hasattr(bandit, 'think'):
-        bandit.think("Easy pickings.")
 
 
-def resolve_combat(engagement: 'Engagement', world: 'World') -> None:
+def resolve_combat(engagement: 'Engagement') -> None:
     """
     Resolve a combat engagement at hour-end.
     Outcome depends on combatant types.
@@ -197,14 +157,13 @@ def resolve_combat(engagement: 'Engagement', world: 'World') -> None:
     defender_type = defender.__class__.__name__
     
     if attacker_type == 'Dragon':
-        _resolve_dragon_combat(attacker, defender, defender_type, world)
+        _resolve_dragon_combat(attacker, defender, defender_type)
     elif attacker_type == 'Bandit':
-        _resolve_bandit_combat(attacker, defender, defender_type, world)
+        _resolve_bandit_combat(attacker, defender, defender_type)
     elif attacker_type == 'Hero':
-        _resolve_hero_combat(attacker, defender, defender_type, world)
+        _resolve_hero_combat(attacker, defender, defender_type)
 
-
-def _resolve_dragon_combat(dragon, defender, defender_type: str, world: 'World') -> None:
+def _resolve_dragon_combat(dragon, defender, defender_type: str) -> None:
     """Resolve dragon attacking something."""
     from random import random
     
@@ -213,7 +172,7 @@ def _resolve_dragon_combat(dragon, defender, defender_type: str, world: 'World')
         if random() < 0.3:  # 30% chance to drop blessing during attack
             from game.entities.blessing import drop_blessing
             dragon.blessings -= 1
-            drop_blessing(world, dragon.coordinates, 1)
+            drop_blessing(dragon.world, dragon.coordinates, 1)
             dragon.think("A piece of my hoard scatters!")
     
     if defender_type == 'Caravan':
@@ -225,7 +184,7 @@ def _resolve_dragon_combat(dragon, defender, defender_type: str, world: 'World')
         defender.die("dragon attack")
         
     elif defender_type == 'Hero':
-        _resolve_dragon_vs_hero(dragon, defender, world)
+        _resolve_dragon_vs_hero(dragon, defender)
         
     elif defender_type == 'Camp':
         if dragon.dragon_type == 'brute':
@@ -256,9 +215,9 @@ def _resolve_dragon_combat(dragon, defender, defender_type: str, world: 'World')
         dragon.think("The settlement burns.")
 
 
-def _resolve_dragon_vs_hero(dragon, hero, world: 'World') -> None:
+def _resolve_dragon_vs_hero(dragon, hero) -> None:
     """Resolve dragon fighting a hero."""
-    from game.entities.hero import HeroMood
+    from game.entities.hero.hero import HeroMood
     from random import random
     
     # Fragile dragons may shed a blessing when fighting
@@ -266,14 +225,14 @@ def _resolve_dragon_vs_hero(dragon, hero, world: 'World') -> None:
         if random() < 0.5:  # 50% chance to drop blessing
             from game.entities.blessing import drop_blessing
             dragon.blessings -= 1
-            drop_blessing(world, dragon.coordinates, 1)
+            drop_blessing(dragon.world, dragon.coordinates, 1)
             dragon.think("A piece of my hoard falls away!")
     
     # Tired heroes outside settlements are killed
     if hero.mood == HeroMood.TIRED:
         # Check if hero is in a settlement
         in_settlement = False
-        for entity in world.entities:
+        for entity in hero.world.entities:
             if hasattr(entity, 'occupies') and entity.is_alive:
                 if entity.occupies(hero.coordinates):
                     in_settlement = True
@@ -292,28 +251,25 @@ def _resolve_dragon_vs_hero(dragon, hero, world: 'World') -> None:
     dragon.think("A hero challenges me!")
 
 
-def _resolve_bandit_combat(bandit, defender, defender_type: str, world: 'World') -> None:
+def _resolve_bandit_combat(bandit, defender, defender_type: str) -> None:
     """Resolve bandit fighting something."""
     if defender_type == 'Hero':
-        from game.entities.hero import HeroMood
+        from game.entities.hero.hero import HeroMood
         # Bandit doesn't know hero's mood until now!
         if defender.mood == HeroMood.VENGEFUL:
             bandit.die("hero vengeance")
             defender.think("Justice served.")
-        else:
             # Non-vengeful hero drives off bandit but doesn't kill
-            if hasattr(bandit, 'think'):
-                bandit.think("This one fights back! I retreat.")
             # Bandit disengages and flees (handled by flee logic elsewhere)
 
 
-def _resolve_hero_combat(hero, defender, defender_type: str, world: 'World') -> None:
+def _resolve_hero_combat(hero, defender, defender_type: str) -> None:
     """Resolve hero fighting something."""
-    from game.entities.hero import HeroMood
+    from game.entities.hero.hero import HeroMood
     
     if defender_type == 'Dragon':
         if hero.party and len(hero.party) >= 4:  # PARTY_SIZE
-            _party_attacks_dragon(hero.party, defender, world)
+            _party_attacks_dragon(hero.party, defender)
         else:
             # Solo hero can't kill dragon, just becomes tired for the day
             if hero.mood != HeroMood.VENGEFUL:
@@ -330,7 +286,7 @@ def _resolve_hero_combat(hero, defender, defender_type: str, world: 'World') -> 
             # Bandit flees (handled by flee logic elsewhere)
 
 
-def _party_attacks_dragon(party: list, dragon, world: 'World') -> None:
+def _party_attacks_dragon(party: list, dragon) -> None:
     """Full party kills dragon, but one hero must die (two for blade type)."""
     # Determine casualties - blade type kills two heroes
     deaths_required = 2 if dragon.dragon_type == 'blade' else 1
@@ -353,7 +309,7 @@ def _party_attacks_dragon(party: list, dragon, world: 'World') -> None:
                 hero.acquaintances.discard(victim)
     
     # Survivors become tired for the day and disband
-    from game.entities.hero import HeroMood
+    from game.entities.hero.hero import HeroMood
     for hero in party:
         if hero.is_alive:
             hero.tired_today = True
@@ -368,24 +324,23 @@ def _party_attacks_dragon(party: list, dragon, world: 'World') -> None:
 # Called from entity.on_hour_end() to resolve the current engagement.
 # =============================================================================
 
-def resolve_engagement(engagement: 'Engagement', world: 'World') -> None:
+def resolve_engagement(engagement: 'Engagement') -> None:
     """
     Resolve an engagement based on its type.
     Called at hour-end for any active engagement.
     """
     if engagement.engagement_type == EngagementType.COMBAT:
-        resolve_combat(engagement, world)
+        resolve_combat(engagement)
     elif engagement.engagement_type == EngagementType.ROBBERY:
-        resolve_robbery(engagement, world)
+        resolve_robbery(engagement)
     elif engagement.engagement_type == EngagementType.FEEDING:
-        resolve_feeding(engagement, world)
+        resolve_feeding(engagement)
     elif engagement.engagement_type == EngagementType.TENDING:
-        resolve_tending(engagement, world)
+        resolve_tending(engagement)
     elif engagement.engagement_type == EngagementType.PILLAGING:
-        resolve_pillage(engagement, world)
+        resolve_pillage(engagement)
 
-
-def resolve_feeding(engagement: 'Engagement', world: 'World') -> None:
+def resolve_feeding(engagement: 'Engagement') -> None:
     """
     Resolve a feeding engagement at hour-end.
     Dragon consumes its prey.
@@ -409,7 +364,7 @@ def resolve_feeding(engagement: 'Engagement', world: 'World') -> None:
         predator.think("My hunger is sated.")
 
 
-def resolve_tending(engagement: 'Engagement', world: 'World') -> None:
+def resolve_tending(engagement: 'Engagement') -> None:
     """
     Resolve a tending engagement at hour-end.
     Dragon bestows blessing on a spirit.
@@ -432,7 +387,7 @@ def resolve_tending(engagement: 'Engagement', world: 'World') -> None:
             tender.think("This spirit already flourishes.")
 
 
-def resolve_pillage(engagement: 'Engagement', world: 'World') -> None:
+def resolve_pillage(engagement: 'Engagement') -> None:
     """
     Resolve a pillaging engagement at hour-end.
     Pillager takes blessings from ruins, treasury, or domain.
@@ -481,171 +436,3 @@ def resolve_pillage(engagement: 'Engagement', world: 'World') -> None:
     else:
         if hasattr(pillager, 'think'):
             pillager.think("Nothing of value remained.")
-
-
-# =============================================================================
-# LEGACY COMPATIBILITY (will be removed once all entities use engagements)
-# =============================================================================
-
-def dragon_attacks_caravan(dragon, caravan, world: 'World') -> None:
-    """Dragon destroys an unprotected caravan."""
-    # Check if caravan is protected by a hero (blade dragons cannot be defended against)
-    if dragon.dragon_type != 'blade':
-        for entity in world.entities:
-            if entity.__class__.__name__ == 'Hero' and entity.is_alive:
-                if entity.get_distance(caravan.coordinates) <= 3:
-                    # Hero defends - combat shifts to hero
-                    dragon_attacks_hero(dragon, entity, world)
-                    return
-    
-    # Unprotected - caravan destroyed
-    dragon.think("The caravan is no more.")
-    caravan.die("dragon attack")
-
-
-def dragon_attacks_bandit(dragon, bandit, world: 'World') -> None:
-    """Dragon kills a bandit."""
-    dragon.think("Vermin crushed.")
-    bandit.die("dragon attack")
-
-
-def dragon_attacks_settlement(dragon, settlement, world: 'World') -> None:
-    """Dragon deals 1 damage to a settlement."""
-    # Check for hero protection (blade dragons cannot be defended against)
-    if dragon.dragon_type != 'blade':
-        for entity in world.entities:
-            if entity.__class__.__name__ == 'Hero' and entity.is_alive:
-                if entity.get_distance(settlement.coordinates) <= 3:
-                    # Hero defends
-                    dragon_attacks_hero(dragon, entity, world)
-                    return
-    
-    # Unprotected - deal damage
-    settlement.hurt(1, 'dragon attack')
-    settlement.days_since_attack = 0  # Trigger mourning
-    
-    # Brute type reduces settlement to 1 HP
-    if dragon.dragon_type == 'brute':
-        if settlement.life > 1:
-            settlement.hurt(settlement.life - 1, 'dragon crush')
-    
-    # Covetous dragons steal a blessing
-    from game.entities.dragon import DragonMood
-    if hasattr(dragon, 'mood') and dragon.mood == DragonMood.COVETOUS:
-        if hasattr(settlement, 'blessings') and settlement.blessings > 0:
-            settlement.blessings -= 1
-            dragon.blessings += 1
-            dragon.think("I claim their blessing as my own.")
-            return
-    
-    dragon.think("The settlement burns.")
-
-
-def dragon_attacks_hero(dragon, hero, world: 'World') -> None:
-    """Dragon fights a hero."""
-    _resolve_dragon_vs_hero(dragon, hero, world)
-
-
-def dragon_attacks_camp(dragon, camp, world: 'World') -> None:
-    """Dragon destroys a camp. Brute type destroys camps instantly."""
-    if dragon.dragon_type == 'brute':
-        camp.die("dragon")
-        dragon.think("The camp is obliterated.")
-    else:
-        camp.hurt(1, 'dragon attack')
-        dragon.think("The workers flee.")
-
-
-def bandit_attacks_settlement(bandit, settlement, world: 'World') -> None:
-    """Bandit deals 1 damage but doesn't trigger mourning."""
-    # Check for hero protection
-    for entity in world.entities:
-        if entity.__class__.__name__ == 'Hero' and entity.is_alive:
-            if entity.get_distance(settlement.coordinates) <= 3:
-                # Vengeful hero kills bandit
-                from game.entities.hero import HeroMood
-                if entity.mood == HeroMood.VENGEFUL:
-                    bandit.die("hero vengeance")
-                    entity.think("Justice served.")
-                    return
-                # Other heroes drive off bandit
-                return
-    
-    # Unprotected - deal damage but no mourning
-    settlement.hurt(1, 'bandit raid')
-    bandit.days_since_robbery = 0
-
-
-def bandit_attacks_caravan(bandit, caravan, world: 'World') -> None:
-    """Bandit ambushes caravan - steals blessing if any."""
-    # Check for hero escort
-    for entity in world.entities:
-        if entity.__class__.__name__ == 'Hero' and entity.is_alive:
-            if entity.get_distance(caravan.coordinates) <= 3:
-                from game.entities.hero import HeroMood
-                if entity.mood == HeroMood.VENGEFUL:
-                    bandit.die("hero vengeance")
-                    entity.think("This one won't prey on travelers again.")
-                    return
-                return
-    
-    # Steal blessing if caravan has one
-    if caravan.blessing:
-        if bandit.blessings < 3:  # MAX_BLESSINGS
-            caravan.blessing = False
-            bandit.blessings += 1
-            bandit.days_since_robbery = 0
-        else:
-            # Blessing is lost
-            caravan.blessing = False
-
-
-def hero_attacks_dragon(hero, dragon, world: 'World') -> None:
-    """Hero party attacks dragon."""
-    if hero.party and len(hero.party) >= 4:  # PARTY_SIZE
-        _party_attacks_dragon(hero.party, dragon, world)
-    else:
-        # Solo hero can't kill dragon, just becomes tired for the day
-        from game.entities.hero import HeroMood
-        if hero.mood != HeroMood.VENGEFUL:
-            hero.tired_today = True
-        hero.think("I cannot face this beast alone...")
-
-
-def resolve_attack(attacker, defender, world: 'World') -> None:
-    """
-    LEGACY: Resolve an attack based on entity types.
-    
-    This function provides instant resolution for backwards compatibility.
-    New code should use initiate_combat() + resolve at on_hour_end().
-    """
-    attacker_type = attacker.__class__.__name__
-    defender_type = defender.__class__.__name__
-    
-    if attacker_type == 'Dragon':
-        if defender_type == 'Caravan':
-            dragon_attacks_caravan(attacker, defender, world)
-        elif defender_type == 'Bandit':
-            dragon_attacks_bandit(attacker, defender, world)
-        elif defender_type == 'Hero':
-            dragon_attacks_hero(attacker, defender, world)
-        elif defender_type == 'Camp':
-            dragon_attacks_camp(attacker, defender, world)
-        elif defender_type in ('Village', 'City'):
-            dragon_attacks_settlement(attacker, defender, world)
-    
-    elif attacker_type == 'Bandit':
-        if defender_type == 'Caravan':
-            bandit_attacks_caravan(attacker, defender, world)
-        elif defender_type in ('Village', 'City'):
-            bandit_attacks_settlement(attacker, defender, world)
-    
-    elif attacker_type == 'Hero':
-        if defender_type == 'Dragon':
-            hero_attacks_dragon(attacker, defender, world)
-        elif defender_type == 'Bandit':
-            # Vengeful heroes kill bandits
-            from game.entities.hero import HeroMood
-            if attacker.mood == HeroMood.VENGEFUL:
-                defender.die("hero vengeance")
-                attacker.think("One less scoundrel.")

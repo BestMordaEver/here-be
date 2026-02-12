@@ -2,7 +2,7 @@
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, List, Optional
+from typing import List
 
 
 class TimeOfDay(Enum):
@@ -65,10 +65,6 @@ class GameTime:
             return TimeOfDay.DUSK
         else:
             return TimeOfDay.NIGHT
-    
-    def is_active_hours(self) -> bool:
-        """Check if entities should be active (not sleeping)."""
-        return DAWN_HOUR <= self.hour <= DUSK_HOUR
 
 
 class DayNightCycle:
@@ -118,10 +114,6 @@ class DayNightCycle:
         """Get the current time of day period."""
         return self.current_time.get_period()
     
-    def is_active_hours(self) -> bool:
-        """Check if it's currently active hours (entities awake)."""
-        return self.current_time.is_active_hours()
-    
     def update(self) -> List[GameTime]:
         """
         Update the time based on real elapsed time.
@@ -169,21 +161,10 @@ class DayNightCycle:
         
         return hours_passed
     
-    def skip_to_dawn(self) -> List[GameTime]:
-        """Skip to the next dawn (start of day)."""
-        return self.skip_to_hour(DAWN_HOUR)
-    
     def set_speed(self, real_seconds_per_game_day: float) -> None:
         """Change the game speed."""
         self.real_seconds_per_game_day = real_seconds_per_game_day
         self.real_seconds_per_game_hour = real_seconds_per_game_day / 24.0
-    
-    def get_hours_until_dawn(self) -> int:
-        """Get hours until next dawn."""
-        if self._current_hour < DAWN_HOUR:
-            return DAWN_HOUR - self._current_hour
-        else:
-            return (24 - self._current_hour) + DAWN_HOUR
     
     def get_hours_until_dusk(self) -> int:
         """Get hours until next dusk."""
@@ -198,6 +179,5 @@ class DayNightCycle:
             "day": self._current_day,
             "hour": self._current_hour,
             "period": self.get_period().value,
-            "is_active": self.is_active_hours(),
             "speed": self.real_seconds_per_game_day,
         }

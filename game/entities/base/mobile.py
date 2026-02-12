@@ -8,9 +8,6 @@ if TYPE_CHECKING:
 
 sqrt2 = 2 ** 0.5
 
-# Encounter detection radius
-ENCOUNTER_RADIUS = 3.0
-
 
 class Mobile(Entity):
     """Base class for entities that can move around the world."""
@@ -18,14 +15,12 @@ class Mobile(Entity):
     def __init__(
         self,
         world: 'World',
-        color: str,
-        character: str,
         coordinates: Coordinates,
         destination=None,
         loiter: int = 0  # Update cycles to skip between moves (0 = fastest)
     ):
-        super().__init__(world, color, character, coordinates)
-        self.state = "created"
+        super().__init__(world, coordinates)
+        self.in_transit = False  # Whether currently moving toward a destination
         self.destination: Optional[Coordinates] = destination
         self.target_entity = None  # The entity we're moving toward (if any)
         self.path: List[Coordinates] = []  # Current path to follow
@@ -33,33 +28,23 @@ class Mobile(Entity):
         self.loiter = loiter  # Cycles to wait between moves
         self.loiter_counter = 0  # Current loiter countdown
     
-    def set_destination(self, destination: Coordinates) -> bool:
+    def set_target(self, target: 'Coordinates | Entity') -> bool:
         """
         Set a new destination and calculate path.
         
         Returns:
             True if a path was found, False otherwise
         """
-        self.destination = destination
-        self.target_entity = None
-        self.path = self.find_path(destination)
+        if isinstance(target, Entity):
+            self.destination = target.coordinates
+            self.target_entity = target
+        else:
+            self.destination = target
+            self.target_entity = None
+
+        self.path = self.find_path(self.destination)
         if self.path:
-            self.state = "moving"
-            return True
-        return False
-    
-    def set_target_entity(self, target) -> bool:
-        """
-        Set an entity as the target and calculate path to it.
-        
-        Returns:
-            True if a path was found, False otherwise
-        """
-        self.target_entity = target
-        self.destination = target.coordinates
-        self.path = self.find_path(target.coordinates)
-        if self.path:
-            self.state = "moving"
+            self.in_transit = True
             return True
         return False
     
@@ -158,7 +143,7 @@ class Mobile(Entity):
         Called every 10 seconds to process movement.
         Moves one step along the current path, respecting loiter delays.
         """
-        if self.state != "moving" or not self.path:
+        if not (self.in_transit and self.path):
             return
         
         # Check loiter (slower entities wait between moves)
@@ -189,13 +174,11 @@ class Mobile(Entity):
             
             # Check if arrived
             if self.coordinates == self.destination:
-                self.state = "arrived"
+                self.in_transit = False
                 self.on_arrival()
             elif not self.path:
                 # Path exhausted but not at destination - recalculate
                 self.path = self.find_path(self.destination)
-                if not self.path:
-                    self.state = "stuck"
     
     def on_arrival(self) -> None:
         """Called when entity arrives at destination. Override in subclasses."""
@@ -211,20 +194,6 @@ class Mobile(Entity):
         """
         # Default: no encounters
         return None
-    
-    def get_nearby_entities(self, radius: float = ENCOUNTER_RADIUS) -> List['Mobile']:
-        """Get all mobile entities within encounter radius."""
-        nearby = []
-        for entity in self.world.entities:
-            if entity is self:
-                continue
-            if not isinstance(entity, Mobile):
-                continue
-            if not entity.is_alive:
-                continue
-            if self.get_distance(entity.coordinates) <= radius:
-                nearby.append(entity)
-        return nearby
     
     def flee_from(self, threat) -> bool:
         """
@@ -251,7 +220,7 @@ class Mobile(Entity):
         target_x = max(0, min(self.world.WIDTH - 1, target_x))
         target_y = max(0, min(self.world.HEIGHT - 1, target_y))
         
-        return self.set_destination((target_x, target_y))
+        return self.set_target((target_x, target_y))
     
     def stop_movement(self) -> None:
         """Stop current movement."""

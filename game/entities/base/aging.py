@@ -18,8 +18,7 @@ class Aging:
     
     age_days: int
     
-    def init_aging(self) -> None:
-        """Initialize aging attributes. Call from __init__."""
+    def __init__(self) -> None:
         self.age_days = 0
     
     def get_lifespan(self) -> int:

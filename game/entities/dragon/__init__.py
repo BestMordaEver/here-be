@@ -1,16 +1,33 @@
 """Dragon entity with mood-based daily scheduling."""
 
-from .parser import parse_properties
-from .movement import update_movement
-from .schedule import build_schedule
-from .actions import execute_action_start, check_for_encounters, react_to_encounter
-
 from typing import TYPE_CHECKING, Dict, Any, List
+from dataclasses import dataclass
 
-from game.entities.base import Coordinates, Mobile, Named, Aging, Thinking, Mortal, Scheduled
+from .types import DragonMood, DragonType, DomainType, DragonAlignment, DragonDiet
+from game.entities.base import Coordinates, Mobile, Named, Aging, Thinking, Scheduled, Visible
 
 if TYPE_CHECKING:
     from game.world import World
+
+@dataclass
+class DragonPronouns:
+    """Pronoun set for a dragon."""
+    subject: str = "it"      # he/she/they/it
+    object: str = "it"       # him/her/them/it  
+    possessive: str = "its"  # his/her/their/its
+    
+    @classmethod
+    def from_string(cls, pronoun_str: str) -> 'DragonPronouns':
+        """Parse pronouns from string like 'he/him/his'."""
+        if not pronoun_str:
+            return cls()
+        parts = pronoun_str.split('/')
+        if len(parts) >= 3:
+            return cls(parts[0], parts[1], parts[2])
+        return cls()
+
+    def __repr__(self):
+        return f"{self.subject}/{self.object}/{self.possessive}"
 
 
 # Dragon constants
@@ -18,7 +35,7 @@ LIFESPAN_BASE_DAYS = 20  # Dragon dies after this many days
 LIFESPAN_PER_SPIRE = 5   # Extra days per active spire
 
 
-class Dragon(Mobile, Mortal, Named, Thinking, Scheduled, Aging):
+class Dragon(Mobile, Visible, Named, Thinking, Scheduled, Aging):
     """Base dragon class with mood-based scheduling."""
     
     def __init__(
@@ -29,77 +46,104 @@ class Dragon(Mobile, Mortal, Named, Thinking, Scheduled, Aging):
         coordinates: Coordinates,
         pronouns: str = None,
     ):
-        # Parse properties
-        char, color = parse_properties(self, properties, pronouns)
-
         # Initialize base classes
-        Mobile.__init__(self, world, color, char, coordinates, loiter=0)  # Dragons move every cycle
+        Mobile.__init__(self, world, coordinates, loiter=0)  # Dragons move every cycle
+        Visible.__init__(self)
         Named.__init__(self, name)
         Thinking.__init__(self)
         Scheduled.__init__(self)
         Aging.__init__(self)
+
+        # Determine dragon type from properties
+        if 'serpent' in properties:
+            self.dragon_type = DragonType.SERPENT
+            char = 'Ȿ'
+            base_rotation = 270
+        elif 'blade' in properties:
+            self.dragon_type = DragonType.BLADE
+            char = '%'
+            base_rotation = 315
+        elif 'druid' in properties:
+            self.dragon_type = DragonType.DRUID
+            char = '₷'
+            base_rotation = 315
+        elif 'midas' in properties:
+            self.dragon_type = DragonType.MIDAS
+            char = 'ꬸ'
+            base_rotation = 270
+        elif 'fragile' in properties:
+            self.dragon_type = DragonType.FRAGILE
+            char = 'ϗ'
+            base_rotation = 235
+        elif 'brute' in properties:
+            self.dragon_type = DragonType.BRUTE
+            char = 'Ȣ'
+            base_rotation = 90
+        
+        # Determine domain from properties
+        if 'aquatic' in properties:
+            self.domain_type = DomainType.AQUATIC
+            color = '#004080'
+        elif 'mountain' in properties:
+            self.domain_type = DomainType.MOUNTAIN
+            color = '#808080'
+        elif 'verdant' in properties:
+            self.domain_type = DomainType.VERDANT
+            color = '#008000'
+        elif 'scorched' in properties:
+            self.domain_type = DomainType.SCORCHED
+            color = '#800000'
+        
+        self.color = color
+        self.char = char
+        self.create_small("default", color, char)
+        self.visual_state = "default"
+
+        # Properties
+        self.properties = properties
+        self.is_scorched = "scorched" in properties
+        self.is_good = "good" in properties
+        self.is_evil = "evil" in properties
+        self.is_territorial = "territorial" in properties
+        
+        # Diet flags
+        self.is_carnivore = "carnivore" in properties
+        self.is_herbivore = "herbivore" in properties
+        self.is_greed = "greed" in properties
+        self.is_anthropophage = "anthropophage" in properties
+
+        # Rotation
+        self.base_rotation = base_rotation
+        self.rotation = base_rotation
+        
+        # Pronouns
+        self.pronouns = DragonPronouns.from_string(pronouns)
         
         self.move_error = 0.0  # For Bresenham-style movement
         
         # State
-        from .. import Domain
+        from .domain import Domain
         self.domain = Domain(world, self.coordinates, self, self.is_scorched)
         world.add_entity(self.domain)
-        self.days_since_hungry = 0  # Track for hungry mood every 3 days
-        
-        # Current action tracking
-        self.current_target = None  # Entity or coordinates being approached
+        self.days_since_hungry: int = 0  # Track for hungry mood every 3 days
+        self.mood: DragonMood = None           # Current mood
         
         # Circling state
-        self.circle_target = None   # Entity being circled
         self.circle_angle = 0.0     # Current angle around target (radians)
-        self.circle_steps_done = 0  # Steps completed in current circle
     
     def on_dawn(self) -> None:
         """Dawn: age, check death, build schedule."""
-        self.is_sleeping = False
-        
         if self.process_aging():
             return
         
         self.build_schedule()
-
-    def on_hour(self, hour: int) -> None:
-        """Process hourly updates."""
-        if self.is_sleeping:
-            return
-        
-        # Check for scheduled action
-        action = self.get_action_for_hour(hour)
-        if action:
-            self.start_action(action)
-            execute_action_start(self, action)
-    
-    def on_hour_end(self, hour: int) -> None:
-        """
-        Resolve any active engagement at hour-end.
-        Dragon combat outcomes are determined here.
-        """
-        if not self.current_engagement:
-            return
-        
-        from game.world.combat import resolve_engagement
-        
-        # Resolve the engagement
-        resolve_engagement(self.current_engagement)
-        
-        # Clear engagement and complete action
-        self.current_engagement = None
-        self.complete_current_action()
     
     def die(self, reason: str) -> None:
         """Handle dragon death - domain becomes treasury."""
         super().die(reason)
-        
+
         if self.domain:
-            self.domain.owner = None
             self.domain.is_treasury = True
-            self.domain.treasure = self.blessings
         
     def get_lifespan(self) -> int:
         """Calculate lifespan based on active spires."""
@@ -107,23 +151,36 @@ class Dragon(Mobile, Mortal, Named, Thinking, Scheduled, Aging):
                          if e.__class__.__name__ == 'Spire' and e.is_alive)
         return LIFESPAN_BASE_DAYS + (LIFESPAN_PER_SPIRE * spire_count)
     
+    def find_path(self, destination, max_search = 5000):
+        return True  # Dragons can move anywhere, so pathfinding always succeeds
+    
     def serialize(self) -> Dict[str, Any]:
         """Serialize for JSON output."""
-        data = super().serialize()
-        data.update({
+        data = {
+            "coordinates": self.coordinates,
+            "in_transit": self.in_transit,
             "name": self.name,
-            "dragon_type": self.dragon_type,
-            "domain_type": self.domain_type,
+            "properties": self.properties,
             "mood": self.mood.value,
             "age_days": self.age_days,
-            "blessings": self.blessings,
             "rotation": self.rotation,
             "pronouns": f"{self.pronouns.subject}/{self.pronouns.object}/{self.pronouns.possessive}",
             "schedule": self.get_schedule_summary(),
-        })
+        }
         return data
 
+
+from .schedule import build_schedule
 Dragon.build_schedule = build_schedule
+
+from .movement import update_movement
 Dragon.update_movement = update_movement
+
+from .actions import start_action, check_for_encounters, resolve_engagement
+Dragon.start_action = start_action
 Dragon.check_for_encounters = check_for_encounters
-Dragon.react_to_encounter = react_to_encounter
+Dragon.resolve_engagement = resolve_engagement
+
+from .domain import Domain
+
+__all__ = ['Dragon', 'DragonMood', 'DragonType', 'DomainType', 'DragonAlignment', 'DragonDiet', 'Domain']

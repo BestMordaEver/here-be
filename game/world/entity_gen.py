@@ -6,7 +6,7 @@ from game.entities import Spirit, Village, Settlement
 
 if TYPE_CHECKING:
 	from . import World
-	from game.entities.city import City
+	from game.entities.settlement.city import City
 
 
 # Spirit generation constants

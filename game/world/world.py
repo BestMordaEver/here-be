@@ -3,11 +3,13 @@ import threading
 import time
 import traceback
 from typing import List, TYPE_CHECKING
+
 from . import HeightMapGenerator, attempt_spawn_settlement, attempt_spawn_cattle, generate_spirits
 from .time_system import DayNightCycle, GameTime, TimeOfDay, DAWN_HOUR, DUSK_HOUR, NIGHT_HOUR
 
 if TYPE_CHECKING:
     from game.entities.base import Scheduled
+    from game.entities.base.entity import Entity
 
 
 # World timing constants
@@ -37,7 +39,7 @@ class World:
         self.height_map = HeightMapGenerator(seed).generate_height_map(self.WIDTH, self.HEIGHT)
         
         # Entity management
-        self.entities: List = []
+        self.entities: List['Entity'] = []
         
         # Time system
         speed = DEBUG_REAL_SECONDS_PER_DAY if debug_speed else DEFAULT_REAL_SECONDS_PER_DAY
@@ -72,7 +74,7 @@ class World:
             return 'forest'
         return 'mountain'
     
-    def add_entity(self, entity) -> None:
+    def add_entity(self, entity: 'Entity') -> None:
         """Add an entity to the world."""
         self.entities.append(entity)
         
@@ -80,7 +82,7 @@ class World:
         if hasattr(entity, 'build_schedule') and self.time.is_active_hours():
             entity.build_schedule()
     
-    def remove_entity(self, entity) -> None:
+    def remove_entity(self, entity: 'Entity') -> None:
         """Remove an entity from the world."""
         if entity in self.entities:
             self.entities.remove(entity)
@@ -107,24 +109,6 @@ class World:
                 result.append(e)
         return result
     
-    def _trigger_dawn(self) -> None:
-        """Trigger dawn event for all scheduled entities."""
-        for entity in self.entities:
-            if hasattr(entity, 'on_dawn'):
-                entity.on_dawn()
-    
-    def _trigger_dusk(self) -> None:
-        """Trigger dusk event for all scheduled entities."""
-        for entity in self.entities:
-            if hasattr(entity, 'on_dusk'):
-                entity.on_dusk()
-    
-    def _trigger_night(self) -> None:
-        """Trigger night event for all scheduled entities."""
-        for entity in self.entities:
-            if hasattr(entity, 'on_night'):
-                entity.on_night()
-    
     def _trigger_hour(self, hour: int) -> None:
         """Trigger hourly event for all scheduled entities."""
         for entity in list(self.entities):
@@ -136,6 +120,7 @@ class World:
         for entity in list(self.entities):
             if hasattr(entity, 'on_hour_end'):
                 entity.on_hour_end(hour)
+            entity.resolve_engagement()
     
     def _process_hour(self, game_time: GameTime) -> None:
         """Process a single hour of game time."""
@@ -143,26 +128,13 @@ class World:
         period = game_time.get_period()
         
         # Resolve previous hour's engagements before starting new hour
-        # (Skip at dawn since we're just starting the day)
-        if period != TimeOfDay.DAWN and game_time.is_active_hours():
-            previous_hour = (hour - 1) % 24
-            self._trigger_hour_end(previous_hour)
+        self._trigger_hour_end((hour - 1) % 24)
         
-        # Handle period transitions
         if period == TimeOfDay.DAWN:
-            self._trigger_dawn()
-            # Day-based spawning
             self._daily_spawns(game_time.day)
-        elif period == TimeOfDay.DUSK:
-            # Resolve final hour before dusk
-            self._trigger_hour_end(hour - 1)
-            self._trigger_dusk()
-        elif period == TimeOfDay.NIGHT and hour == NIGHT_HOUR:
-            self._trigger_night()
         
         # Trigger hourly updates for active hours
-        if game_time.is_active_hours():
-            self._trigger_hour(hour)
+        self._trigger_hour(hour)
     
     def _daily_spawns(self, day: int) -> None:
         """Handle spawning that occurs at dawn."""
@@ -179,56 +151,6 @@ class World:
         cattle_count = sum(1 for e in self.entities if e.__class__.__name__ == 'Cattle' and e.is_alive)
         if cattle_count < 20:
             attempt_spawn_cattle(self)
-    
-    def _update_entity_movement(self) -> None:
-        """Update entity movement (called every 10 seconds)."""
-        if not self.time.is_active_hours():
-            return  # No movement at night
-        
-        # Iterate over a copy since entities may be removed during update
-        for entity in list(self.entities):
-            if hasattr(entity, 'update_movement'):
-                entity.update_movement()
-    
-    def _check_encounters(self) -> None:
-        """Check for encounters between moving entities."""
-        if not self.time.is_active_hours():
-            return
-        
-        # Get all scheduled entities that are currently moving
-        moving_entities = [
-            e for e in self.entities 
-            if hasattr(e, 'check_for_encounters') and hasattr(e, 'current_action')
-            and e.current_action is not None
-        ]
-        
-        # Check each pair for encounters
-        checked_pairs = set()
-        for entity in moving_entities:
-            encountered = entity.check_for_encounters()
-            if encountered and (id(entity), id(encountered)) not in checked_pairs:
-                checked_pairs.add((id(entity), id(encountered)))
-                checked_pairs.add((id(encountered), id(entity)))
-                
-                # Let both entities react
-                self._handle_encounter(entity, encountered)
-    
-    def _handle_encounter(self, entity1, entity2) -> None:
-        """Handle an encounter between two entities."""
-        # Get reactions from both
-        reaction1 = None
-        reaction2 = None
-        
-        if hasattr(entity1, 'react_to_encounter'):
-            reaction1 = entity1.react_to_encounter(entity2)
-        if hasattr(entity2, 'react_to_encounter'):
-            reaction2 = entity2.react_to_encounter(entity1)
-        
-        # Apply reactions
-        if reaction1 and hasattr(entity1, 'interrupt_for_encounter'):
-            entity1.interrupt_for_encounter(reaction1)
-        if reaction2 and hasattr(entity2, 'interrupt_for_encounter'):
-            entity2.interrupt_for_encounter(reaction2)
     
     def update(self) -> None:
         """
@@ -248,8 +170,21 @@ class World:
         current_time = time.time()
         if current_time - self.last_movement_update >= MOVEMENT_UPDATE_INTERVAL:
             self.last_movement_update = current_time
-            self._update_entity_movement()
-            self._check_encounters()
+            
+            # Iterate over a copy since entities may be removed during update
+            for entity in list(self.entities):
+                if hasattr(entity, 'update_movement'):
+                    entity.update_movement()
+
+             # Get all scheduled entities that are currently moving
+            moving_entities: List[Entity] = [
+                e for e in self.entities 
+                if hasattr(e, 'check_for_encounters') and hasattr(e, 'current_action')
+                and e.current_action is not None
+            ]
+            
+            for entity in moving_entities:
+                entity.check_for_encounters()
     
     def update_loop(self) -> None:
         """Continuously update the world in the background."""
@@ -271,12 +206,6 @@ class World:
     def set_time_speed(self, real_seconds_per_day: float) -> None:
         """Change the game speed."""
         self.time.set_speed(real_seconds_per_day)
-    
-    def skip_to_dawn(self) -> None:
-        """Debug: Skip to next dawn."""
-        hours = self.time.skip_to_dawn()
-        for gt in hours:
-            self._process_hour(gt)
     
     def skip_hours(self, count: int) -> None:
         """Debug: Skip a number of hours."""

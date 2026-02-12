@@ -1,5 +1,5 @@
 """Domain - a dragon's treasury and territory marker."""
-from ..base import Coordinates, Entity, Mortal
+from ..base import Coordinates, Entity, Visible
 from typing import TYPE_CHECKING, Dict, Any, List, Optional, Tuple
 
 if TYPE_CHECKING:
@@ -9,10 +9,9 @@ if TYPE_CHECKING:
 
 # Domain constants
 SCORCH_RADIUS = 10  # Radius of scorched earth effect
-PILLAGE_TREASURE_AMOUNT = 50  # Treasure gained from pillaging
 
 
-class Domain(Entity, Mortal):
+class Domain(Entity, Visible):
     """A dragon's domain - their territory marker and treasury."""
 
     # Valid spawn terrain by domain type
@@ -98,25 +97,22 @@ class Domain(Entity, Mortal):
     
     def __init__(self, world: 'World', coordinates: Coordinates, dragon: 'Dragon', is_scorched: bool = False):
         # Domain color matches dragon color
-        super().__init__(world, dragon.color, "ʘ", coordinates)
+        super().__init__(world, coordinates)
+        Visible.__init__(self)
+
+        self.create_small("default", dragon.color, "ʘ")
+        self.visual_state = "default"
+        self.create_small("treasury", "#FFD700", "¤")  # Gold symbol for treasury state
+        
         self.dragon = dragon
         self.is_scorched = is_scorched
-        self.treasure = 0  # Accumulated treasure
+        self.blessings = 0  # Accumulated blessings
         self.background_color = None  # Background color for scorched domains
         self.is_treasury = False  # Becomes true when dragon dies
         
         if is_scorched:
             # Scorched domains have a dark background
             self.background_color = "#1a0808"  # Dark red
-    
-    def get_tiles(self) -> List[Tuple[Coordinates, str, str]]:
-        """Return tile for the domain."""
-        if self.is_dead:
-            # Dead domain shows as treasury that can be pillaged
-            return [(self.coordinates, "¤", "#FFD700")]  # Gold treasury symbol
-        
-        tile = (self.coordinates, "ʘ", self.color)
-        return [tile]
     
     def get_background_tiles(self) -> List[Tuple[Coordinates, str]]:
         """Return background tiles for scorched earth effect.
@@ -188,13 +184,14 @@ class Domain(Entity, Mortal):
         distance = self.dragon.get_distance(self.coordinates)
         return distance > 15
     
-    def pillage(self) -> int:
+    def pillage(self, amount: int = 3) -> int:
         """Pillage the domain, removing scorched earth and returning treasure.
         Returns amount of treasure gained.
         """
-        treasure_gained = self.treasure + PILLAGE_TREASURE_AMOUNT
-        self.die("pillaged")
-        return treasure_gained
+        taken = min(amount, self.blessings)
+        if self.blessings == taken:
+            self.die("pillaged")
+        return taken
     
     def update(self) -> None:
         """Update domain state."""
@@ -204,20 +201,26 @@ class Domain(Entity, Mortal):
         # If dragon is dead, domain becomes a pillage-able treasury
         if not self.dragon.is_alive:
             self.is_treasury = True
+            self.visual_state = "treasury"
     
-    def serialize(self) -> Dict[str, Any]:
-        """Serialize domain to dictionary for JSON output."""
-        data = super().serialize()
-        data["dragon"] = self.dragon.name if self.dragon else "none"
-        data["is_scorched"] = self.is_scorched
-        data["treasure"] = self.treasure
+    def get_visual(self):
+        data = super().get_visual()
+        if self.is_scorched and not self.is_dead:
+            # Add scorched earth background
+            data.update({
+                "background_tiles": self.get_background_tiles(),
+                "terrain_overlays": self.get_scorched_terrain_overlay()
+            })
         
-        # Add background tiles for rendering
-        data["background_tiles"] = self.get_background_tiles()
-        
-        # Add scorched terrain overlay for rendering (need world reference)
-        # Will be populated by world serialization
-        data["scorched_terrain_overlay"] = {}
-        
-        data["debug_info"] = f"Domain at {self.coordinates} for {self.dragon.name if self.dragon else 'none'}, treasure: {self.treasure}"
         return data
+
+    def serialize(self) -> Dict[str, Any]:
+        """Serialize domain for database storage."""
+        return {
+            "coordinates": self.coordinates,
+            "dragon": self.dragon.name if self.dragon else None,
+            "is_scorched": self.is_scorched,
+            "blessings": self.blessings,
+            "is_treasury": self.is_treasury,
+            "is_alive": self.is_alive,
+        }
