@@ -2,6 +2,7 @@ from random import choice, random
 from typing import TYPE_CHECKING, Optional
 from game.entities.base.entity import EngagementType, Entity
 from game.entities.base.scheduled import Scheduled, ScheduledAction, ActionType
+from game.entities.spirit import SpiritType
 
 from .types import DragonType
 from .schedule import DragonMood
@@ -89,7 +90,7 @@ def start_action(dragon: Dragon, action: ScheduledAction) -> None:
         if dragon.is_carnivore:
             target = finders.find_cattle(dragon)
             if not target:
-                spirits = finders.find_spirits(dragon, distance_max=9999, spirit_types=['water'])
+                spirits = finders.find_spirits(dragon, distance_max=9999, spirit_types=[SpiritType.LAKE])
                 target = choice(spirits) if spirits else None
         elif dragon.is_herbivore:
             target = finders.find_grazing_spot(dragon)

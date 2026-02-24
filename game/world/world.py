@@ -4,7 +4,7 @@ import time
 import traceback
 from typing import List, TYPE_CHECKING
 
-from . import HeightMapGenerator, attempt_spawn_settlement, attempt_spawn_cattle, generate_spirits
+from . import HeightMapGenerator, Biome, attempt_spawn_settlement, attempt_spawn_cattle, generate_spirits
 from .time_system import DayNightCycle, GameTime, TimeOfDay, DAWN_HOUR, DUSK_HOUR, NIGHT_HOUR
 
 if TYPE_CHECKING:
@@ -20,16 +20,15 @@ MOVEMENT_UPDATE_INTERVAL = 10.0          # Seconds between movement updates
 # City starting blessings
 CITY_STARTING_BLESSINGS = 10  # Enough to spawn spire immediately
 
-
 class World:
 
     WIDTH = 200
     HEIGHT = 200
     
     THRESHOLDS = {
-        'water': 0.23,
-        'field': 0.68,
-        'forest': 0.80,
+        Biome.WATER: 0.23,
+        Biome.FIELD: 0.68,
+        Biome.FOREST: 0.80,
     }
 
     def __init__(self, seed=None, debug_speed: bool = False):
@@ -66,13 +65,13 @@ class World:
 
     @staticmethod
     def get_biome_from_height(height):
-        if height < World.THRESHOLDS['water']:
-            return 'water'
-        if height < World.THRESHOLDS['field']:
-            return 'field'
-        if height < World.THRESHOLDS['forest']:
-            return 'forest'
-        return 'mountain'
+        if height < World.THRESHOLDS[Biome.WATER]:
+            return Biome.WATER
+        if height < World.THRESHOLDS[Biome.FIELD]:
+            return Biome.FIELD
+        if height < World.THRESHOLDS[Biome.FOREST]:
+            return Biome.FOREST
+        return Biome.MOUNTAIN
     
     def add_entity(self, entity: 'Entity') -> None:
         """Add an entity to the world."""

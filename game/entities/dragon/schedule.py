@@ -13,7 +13,28 @@ def build_schedule(dragon: Dragon) -> None:
     """Build the day's schedule based on mood."""
     dragon.current_action = None
     
-    dragon.mood = _determine_mood(dragon)
+        # Hungry every 3 days (unless greed)
+    if dragon.days_since_hungry >= 3:
+        dragon.days_since_hungry = 0
+        if dragon.is_greed:
+            dragon.mood = DragonMood.COVETOUS
+        else:
+            dragon.mood = DragonMood.HUNGRY
+    
+    # Covetous occasionally
+    elif not dragon.is_good and random() < 0.2:
+        dragon.mood = DragonMood.COVETOUS
+    
+    else:
+        # Random between dreary, inspired, pensive
+        roll = random()
+        if roll < 0.3:
+            dragon.mood = DragonMood.DREARY
+        elif roll < 0.6:
+            dragon.mood = DragonMood.INSPIRED
+        else:
+            dragon.mood = DragonMood.PENSIVE
+
     dragon.days_since_hungry += 1
     planner = dragon.plan_day()
     
@@ -65,25 +86,3 @@ def build_schedule(dragon: Dragon) -> None:
         planner.add(ActionType.ATTACK)
     
     planner.commit()
-
-def _determine_mood(dragon: Dragon) -> DragonMood:
-    """Determine today's mood based on conditions."""
-    # Hungry every 3 days (unless greed)
-    if dragon.days_since_hungry >= 3:
-        dragon.days_since_hungry = 0
-        if dragon.is_greed:
-            return DragonMood.COVETOUS
-        return DragonMood.HUNGRY
-    
-    # Covetous occasionally
-    if not dragon.is_good and random() < 0.2:
-        return DragonMood.COVETOUS
-    
-    # Random between dreary, inspired, pensive
-    roll = random()
-    if roll < 0.3:
-        return DragonMood.DREARY
-    elif roll < 0.6:
-        return DragonMood.INSPIRED
-    else:
-        return DragonMood.PENSIVE

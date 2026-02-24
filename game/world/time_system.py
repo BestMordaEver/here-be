@@ -1,16 +1,8 @@
 """Day/night cycle and time management for the game world."""
 import time
 from dataclasses import dataclass
-from enum import Enum
 from typing import List
-
-
-class TimeOfDay(Enum):
-    """Periods of the day."""
-    DAWN = "dawn"       # 6:00 - entities wake, build schedules
-    DAY = "day"         # 7:00-19:00 - active period
-    DUSK = "dusk"       # 20:00 - entities return home
-    NIGHT = "night"     # 21:00-5:00 - entities sleep
+from .types import TimeOfDay
 
 
 # Default hours for each period

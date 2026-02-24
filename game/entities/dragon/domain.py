@@ -1,6 +1,9 @@
 """Domain - a dragon's treasury and territory marker."""
-from ..base import Coordinates, Entity, Visible
 from typing import TYPE_CHECKING, Dict, Any, List, Optional, Tuple
+
+from game.entities.base import Coordinates, Entity, Visible
+from game.world import Biome
+from .types import DomainType
 
 if TYPE_CHECKING:
     from game.world import World
@@ -16,14 +19,14 @@ class Domain(Entity, Visible):
 
     # Valid spawn terrain by domain type
     VALID_SPAWN_TERRAIN = {
-        'aquatic': ['water'],
-        'mountain': ['mountain'],
-        'verdant': ['field', 'forest'],
-        'scorched': ['field', 'water', 'mountain', 'forest'],  # Scorched can spawn anywhere
+        DomainType.AQUATIC: [Biome.WATER],
+        DomainType.MOUNTAIN: [Biome.MOUNTAIN],
+        DomainType.VERDANT: [Biome.FIELD, Biome.FOREST],
+        DomainType.SCORCHED: [Biome.FIELD, Biome.WATER, Biome.MOUNTAIN, Biome.FOREST],  # Scorched can spawn anywhere
     }
     
     @staticmethod
-    def validate_spawn_location(world: 'World', coordinates: Coordinates, domain_type: str) -> bool:
+    def validate_spawn_location(world: 'World', coordinates: Coordinates, domain_type: DomainType) -> bool:
         """
         Validate that spawn coordinates match the domain type terrain.
         
@@ -46,13 +49,13 @@ class Domain(Entity, Visible):
         return biome in valid_biomes
     
     @staticmethod
-    def find_valid_spawn_location(world: 'World', domain_type: str, min_lair_distance: int = 30) -> Optional[Coordinates]:
+    def find_valid_spawn_location(world: 'World', domain_type: DomainType, min_lair_distance: int = 30) -> Optional[Coordinates]:
         """
         Find a random valid spawn location for a dragon.
         
         Args:
             world: The game world
-            domain_type: One of 'aquatic', 'mountain', 'verdant', 'scorched'
+            domain_type: One of DomainType.AQUATIC, DomainType.MOUNTAIN, DomainType.VERDANT, DomainType.SCORCHED
             min_lair_distance: Minimum distance from other dragon lairs
             
         Returns:
@@ -160,13 +163,13 @@ class Domain(Entity, Visible):
                     height = self.world.height_map[y][x]
                     biome = self.world.get_biome_from_height(height)
                     
-                    if biome == 'water':
+                    if biome == Biome.WATER:
                         overlays[(x, y)] = ('ʬ', '#8B7355')  # Cracked bed, brown
-                    elif biome == 'field':
+                    elif biome == Biome.FIELD:
                         overlays[(x, y)] = ('…', '#2F2F2F')  # Ash, dark gray
-                    elif biome == 'forest':
+                    elif biome == Biome.FOREST:
                         overlays[(x, y)] = ('F', "#2E2E2E")  # Burnt, very dark
-                    elif biome == 'mountain':
+                    elif biome == Biome.MOUNTAIN:
                         overlays[(x, y)] = ('Λ', '#505050')  # Darker mountain
         
         return overlays

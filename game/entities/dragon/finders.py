@@ -77,7 +77,7 @@ def find_spirits(
 		distance_min: Minimum distance from domain (exclusive)
 		distance_max: Maximum distance from domain (inclusive)
 		has_blessing: None = don't care, True = must have, False = must not have
-		spirit_types: Filter by type (e.g., ['water']). None = any type.
+		spirit_types: Filter by type. None = any type.
 	"""
 	if not dragon.domain:
 		return []
