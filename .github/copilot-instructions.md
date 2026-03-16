@@ -29,61 +29,82 @@ Entities use **multiple inheritance** from mixins in `game/entities/base/`:
 
 ```python
 # Example: Dragon inherits from 6 mixins
-class Dragon(Mortal, Mobile, Named, Thinking, Scheduled, Aging):
+class Dragon(Mobile, Visible, Named, Thinking, Scheduled, Aging):
 ```
 
 **Key mixins:**
-- `Entity` - Base class (coordinates, color, character, `serialize()`, `die()`)
-- `Mobile` - Movement, A* pathfinding, state machine (`created→moving→arrived`), movement debt
-- `Thinking` - Thoughts list, intent, `think()` method for logging entity thoughts
-- `Scheduled` - Day planning with `DayScheduler`, hour-based actions via `on_hour()`
-- `Mortal` - Auto-cleanup from world when `is_dead=True` (checked in `update()`)
+- `Entity` - Base class (coordinates, engagement system, `serialize()`, `die()`)
+- `Mobile` - Movement, A* pathfinding, movement debt, `set_target()`, `on_arrival()`
+- `Visible` - Visual states via `create_small()`/`create_large()`, multi-state rendering
+- `Thinking` - Thoughts list, `think()` method for logging entity thoughts, placeholder system
+- `Scheduled` - Rolling schedule with `DayPlanner`, `on_hour()`/`on_hour_end()`, sleep/wake cycle
 - `Settlement` - Multi-tile structures via `occupies()`, `hurt()`/`heal()`, blessings
-- `Aging` - Lifespan tracking via `process_aging()`, `init_aging()`, `get_lifespan()`
+- `Aging` - Lifespan tracking via `process_aging()`, `get_lifespan()`, `on_old_age_death()`
 - `Named` - Simple name attribute
 
+**Deprecated:** `Mortal` mixin has been removed; entity cleanup is handled by `Entity.die()`.
+
 ### Time System
-The world uses a **day/night cycle** with event hooks:
-- `on_dawn()` - Build schedules, spawn entities, daily events
-- `on_hour(hour)` - Execute scheduled actions
-- `on_dusk()` - Return to home, end day
-- `on_night()` - Sleep, special behaviors
+The world uses a **day/night cycle** managed by `DayNightCycle` in `time_system.py`:
+- `on_dawn()` - Age entities, build schedules, spawn entities, daily events
+- `on_hour(hour)` - Dispatch scheduled actions, passive behavior
+- `on_hour_end(hour)` - Resolve engagements (combat damage, blessing theft, etc.)
+- Sleep/wake cycle is entity-controlled via `Scheduled` mixin (not world-triggered)
 
 Schedule hours: 7-19 (active), 6 (dawn), 20 (dusk), 21-5 (night)
 
 ### World Update Flow
 1. `DayNightCycle` advances time based on real seconds
-2. Period transitions trigger `_trigger_dawn()`, `_trigger_dusk()`, `_trigger_night()`
+2. `_process_hour()` calls `_trigger_hour_end()` for the previous hour, then `_trigger_hour()` for current
 3. Hourly updates call entity `on_hour(hour)` for scheduled action execution
-4. 10-second movement updates handle entity motion and encounters
+4. 10-second movement updates handle entity motion and encounter checks
 
 ## Conventions
 
 ### Entity Creation Pattern
 ```python
-class NewEntity(Mobile, Thinking, Scheduled):  # Choose mixins needed
+class NewEntity(Mobile, Visible, Thinking, Scheduled, Aging):  # Choose mixins needed
     def __init__(self, world: 'World', coordinates: Coordinates, ...):
-        Mobile.__init__(self, world, color, char, coordinates)
-        Thinking.__init__(self, intent="...")
+        Mobile.__init__(self, world, coordinates, loiter=1)
+        Visible.__init__(self)
+        Thinking.__init__(self)
         Scheduled.__init__(self)
-        # Entity-specific state
+        Aging.__init__(self)
+        self.create_small("default", color, char)
+        self.visual_state = "default"
 ```
 
 ### Scheduling Actions
-Use `DayScheduler` to spread actions across active hours:
+Use `DayPlanner` to spread actions across active hours (anchored at dusk):
 ```python
 def build_schedule(self):
-    scheduler = DayScheduler()
-    scheduler.add(ActionType.PATROL, target=location)
-    scheduler.add(ActionType.REST)
-    self.schedule = scheduler.build()  # Returns [(hour, PlannedAction), ...]
+    planner = self.plan_day()
+    planner.add(ActionType.PATROL, target=location)
+    planner.add(ActionType.REST)
+    planner.commit()  # Writes to schedule + auto-schedules sleep/wake
 ```
 
 ### Serialization
-Entities override `serialize()` returning dicts for the `/api/world` JSON endpoint. Base `Entity.serialize()` returns `color`, `character`, `coordinates`. Subclasses add entity-specific fields (e.g., `mood`, `age_days`, `blessings`). Entity type is inferred by the frontend from the presence of type-specific fields.
+Entities override `serialize()` returning dicts for the `/api/world` JSON endpoint. Subclasses build their own dict (e.g., `mood`, `age_days`, `blessings`, `coordinates`). Entity type is inferred by the frontend from the presence of type-specific fields.
 
-### Combat
-Combat functions in `game/world/combat.py` follow pattern: `attacker_attacks_defender(attacker, defender, world)`. They check for protections (heroes defending settlements) before applying damage.
+### Entity Module Pattern
+Complex entities (Dragon, Hero) are split into submodules and monkey-patched onto the class:
+```python
+# In entity/__init__.py:
+from .schedule import build_schedule
+Entity.build_schedule = build_schedule
+
+from .actions import start_action, check_for_encounters, resolve_engagement
+Entity.start_action = start_action
+# etc.
+```
+Submodule files: `types.py` (enums/constants), `finders.py` (target search), `schedule.py` (mood + day planning), `actions.py` (action dispatch + engagement resolution), `movement.py` (movement overrides).
+
+### Combat & Engagements
+Entities interact through the **engagement system** (`Entity.engage()`, `Entity.join_engagement()`, `Entity.disengage()`).
+Engagement types: `COMBAT`, `ROBBERY`, `TENDING`, `TRADING`, `FEEDING`, `PILLAGING`, `RESTING`, `HOARDING`.
+Engagements are initiated during `on_hour()` and resolved at `on_hour_end()` via entity-specific `resolve_engagement()` methods.
+Entities can interrupt current actions to respond to encounters via `interrupt_current()`.
 
 ## Commands
 
@@ -108,7 +129,6 @@ When discovering signatures or class structures:
 |------|-------|
 | Add new entity type | `game/entities/new_entity.py`, update `game/entities/__init__.py` |
 | Modify spawning | `game/world/entity_gen.py` |
-| Add combat behavior | `game/world/combat.py` |
 | Change time/scheduling | `game/world/time_system.py`, `game/entities/base/scheduled.py` |
 | Add API endpoint | `web/endpoints/api.py` |
 | Add page route | `web/endpoints/endpoints.py`, `web/templates/` |
@@ -118,4 +138,4 @@ When discovering signatures or class structures:
 See [todo.txt](../todo.txt) for active tasks. Priority areas:
 - User dragon submission form with spire-gated spawning
 - Gossip/news system between entities
-- Settlement hit point balancing
+- Wiring up the world update loop to call `on_dawn()` / engagement resolution

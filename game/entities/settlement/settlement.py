@@ -1,30 +1,40 @@
 """Base settlement class for all settlement types."""
-from .entity import Entity, Coordinates
-from .thinking import Thinking
-from typing import Dict, Any, List, Tuple, TYPE_CHECKING
+from ..base.named import Named
+from ..base.entity import Entity, Coordinates
+from ..base.thinking import Thinking
+from ..base.scheduled import Scheduled
+from ..base.visible import Visible
+from game.world.types import Biome
+from typing import Dict, Any, List, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from game.world import World
     from game.entities import Caravan
 
 
-class Settlement(Entity, Thinking):
+class Settlement(Entity, Named, Thinking, Scheduled, Visible):
     """Base class for all settlement types. Includes health/life management."""
     
     def __init__(
         self,
         world: 'World',
+        name: str,
         coordinates: Coordinates,
         life: int,
-        color: str = "",
-        character: str = "",
     ):
-        Entity.__init__(self, world, color, character, coordinates)
+        Entity.__init__(self, world, coordinates)
+        Named.__init__(self, name)
         Thinking.__init__(self)
+        Scheduled.__init__(self)
+        Visible.__init__(self)
         
         # Health system for settlements
         self.max_life = life
         self.life = life
+
+        # Event tracking
+        self.days_since_market = 0
+        self.days_since_celebration = 0
         
         # Blessing system - only resource that matters
         self.blessings = 0
@@ -51,18 +61,20 @@ class Settlement(Entity, Thinking):
                 return True
         return False
     
-    def die(self, reason) -> None:
-        """Handle settlement death/depletion. Stores blessings in ruins if applicable."""
-        # Allow subclasses to handle pre-death cleanup
-        if hasattr(self, 'on_pre_death'):
-            self.on_pre_death()
-        
-        super().die(reason)
-        
-        # If this settlement has the Ruins mixin, store blessings for pillaging
-        if hasattr(self, 'on_become_ruins'):
-            self.on_become_ruins()
-    
+    def _is_field(self, coordinates: Coordinates) -> bool:
+        """Check if a tile is passable field terrain for caravans."""
+        x, y = coordinates
+        if x < 0 or y < 0 or x >= self.world.WIDTH or y >= self.world.HEIGHT:
+            return False
+        height = self.world.height_map[y][x]
+        return self.world.get_biome_from_height(height) == Biome.FIELD
+
+    def get_spawn_point(self, destination=None) -> Optional[Coordinates]:
+        """Find a valid spawn point for an entity outside the settlement.
+        Must be overridden by subclasses to define specific spawn logic based on settlement layout.
+        """
+        raise NotImplementedError
+
     def send_caravan(self, destination, mission, target_spirit=None) -> 'Caravan':
         """Unified method to create and send a caravan.
         Args:
@@ -72,12 +84,14 @@ class Settlement(Entity, Thinking):
         Returns: The created Caravan entity
         """
         from game.entities import Caravan
-        from game.entities.caravan import CaravanMission
         
-        # Create caravan at settlement's southern gate
+        spawn = self.get_spawn_point(destination)
+        if spawn is None:
+            spawn = self.coordinates  # Last resort fallback
+        
         caravan = Caravan(
             self.world,
-            coordinates=(self.coordinates[0], self.coordinates[1] + 2),
+            coordinates=spawn,
             home=self,
             destination=destination,
             mission=mission,

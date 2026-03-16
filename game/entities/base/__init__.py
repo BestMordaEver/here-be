@@ -1,8 +1,9 @@
-from .entity import Entity, Coordinates, Engagement, EngagementType
+from .engaging import Engaging, Engagement, EngagementType
+from .pockets import Pockets
+from .entity import Entity, Coordinates
 from .mobile import Mobile
 from .named import Named
 from .thinking import Thinking
-from .settlement import Settlement
 from .aging import Aging
 from .visible import Visible
 from .scheduled import (
@@ -12,8 +13,9 @@ from .scheduled import (
 )
 
 __all__ = [
+    "Engaging", "Pockets",
     "Entity", "Coordinates", "Engagement", "EngagementType",
-    "Mobile", "Named", "Thinking", "Settlement",
+    "Mobile", "Named", "Thinking",
 	"Aging", "Visible",
     "Scheduled", "ScheduledAction", "ActionType",
     "Schedule", "DayPlanner", "PlannedAction", "TimeKey",

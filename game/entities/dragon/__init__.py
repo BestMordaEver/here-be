@@ -111,6 +111,7 @@ class Dragon(Mobile, Visible, Named, Thinking, Scheduled, Aging):
         self.is_herbivore = "herbivore" in properties
         self.is_greed = "greed" in properties
         self.is_anthropophage = "anthropophage" in properties
+        self.is_hungry = False  # Only used by anthropophage
 
         # Rotation
         self.base_rotation = base_rotation

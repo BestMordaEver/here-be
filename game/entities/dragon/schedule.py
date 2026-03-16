@@ -40,7 +40,7 @@ def build_schedule(dragon: Dragon) -> None:
     
     if dragon.mood == DragonMood.DREARY:
         # Dreary: tend hoard, attack if not good.
-        planner.add(ActionType.TEND_HOARD)
+        planner.add(ActionType.HOARD)
         if dragon.is_evil:
             settlement = finders.find_settlement_target(dragon)
             if settlement:
@@ -51,19 +51,19 @@ def build_schedule(dragon: Dragon) -> None:
         spirits = finders.find_spirits(dragon, distance_max=9999, distance_min=20, count=2, has_blessing=False)
         
         if spirits:
-            planner.add(ActionType.TEND_SPIRIT, spirits[0])
+            planner.add(ActionType.TEND, spirits[0])
         
-        planner.add(ActionType.TEND_HOARD)
+        planner.add(ActionType.HOARD)
         
         if len(spirits) > 1:
-            planner.add(ActionType.TEND_SPIRIT, spirits[1])
+            planner.add(ActionType.TEND, spirits[1])
 
     elif dragon.mood == DragonMood.PENSIVE:
         # Pensive: feed once, tend nearby spirit.
         planner.add(ActionType.FEED)
         spirits = finders.find_spirits(dragon, has_blessing=False)
         if spirits:
-            planner.add(ActionType.TEND_SPIRIT, spirits[0])
+            planner.add(ActionType.TEND, spirits[0])
 
     elif dragon.mood == DragonMood.HUNGRY:
         # Hungry: feed, rest, feed again.

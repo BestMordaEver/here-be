@@ -108,49 +108,6 @@ class World:
                 result.append(e)
         return result
     
-    def _trigger_hour(self, hour: int) -> None:
-        """Trigger hourly event for all scheduled entities."""
-        for entity in list(self.entities):
-            if hasattr(entity, 'on_hour'):
-                entity.on_hour(hour)
-    
-    def _trigger_hour_end(self, hour: int) -> None:
-        """Trigger hour-end event for all scheduled entities. Resolves engagements."""
-        for entity in list(self.entities):
-            if hasattr(entity, 'on_hour_end'):
-                entity.on_hour_end(hour)
-            entity.resolve_engagement()
-    
-    def _process_hour(self, game_time: GameTime) -> None:
-        """Process a single hour of game time."""
-        hour = game_time.hour
-        period = game_time.get_period()
-        
-        # Resolve previous hour's engagements before starting new hour
-        self._trigger_hour_end((hour - 1) % 24)
-        
-        if period == TimeOfDay.DAWN:
-            self._daily_spawns(game_time.day)
-        
-        # Trigger hourly updates for active hours
-        self._trigger_hour(hour)
-    
-    def _daily_spawns(self, day: int) -> None:
-        """Handle spawning that occurs at dawn."""
-        # Spawn cities every 15 days
-        if day > 1 and day % 15 == 0:
-            attempt_spawn_settlement(self, 'city')
-        
-        # Spawn villages every 10 days (2 villages)
-        if day > 1 and day % 10 == 0:
-            for _ in range(2):
-                attempt_spawn_settlement(self, 'village')
-        
-        # Spawn cattle once per day, with world cap of 20
-        cattle_count = sum(1 for e in self.entities if e.__class__.__name__ == 'Cattle' and e.is_alive)
-        if cattle_count < 20:
-            attempt_spawn_cattle(self)
-    
     def update(self) -> None:
         """
         Main update loop. Processes:
@@ -163,7 +120,35 @@ class World:
         
         # Process each hour that passed
         for game_time in hours_passed:
-            self._process_hour(game_time)
+            hour = game_time.hour
+            period = game_time.get_period()
+            
+            # Resolve previous hour's engagements before starting new hour
+            for entity in list(self.entities):
+                entity.resolve_engagement()
+            
+            if period == TimeOfDay.DAWN:
+                # Spawn cities every 15 days
+                if game_time.day > 1 and game_time.day % 15 == 0:
+                    attempt_spawn_settlement(self, 'city')
+                
+                # Spawn villages every 10 days (2 villages)
+                if game_time.day > 1 and game_time.day % 10 == 0:
+                    for _ in range(2):
+                        attempt_spawn_settlement(self, 'village')
+                
+                # Spawn cattle once per day, with world cap of 20
+                cattle_count = sum(1 for e in self.entities if e.__class__.__name__ == 'Cattle' and e.is_alive)
+                if cattle_count < 20:
+                    attempt_spawn_cattle(self)
+            
+            # Trigger hourly updates for active hours
+            for entity in list(self.entities):
+                if hasattr(entity, 'on_hour'):
+                    entity.on_hour(hour)
+                
+                if period == TimeOfDay.DAWN and hasattr(entity, 'on_dawn'):
+                    entity.on_dawn()
         
         # Check if it's time for movement update (every 10 seconds)
         current_time = time.time()

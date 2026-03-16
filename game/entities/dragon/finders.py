@@ -7,9 +7,9 @@ if TYPE_CHECKING:
 	from game.entities.cattle import Cattle
 	from game.entities.bandit import Bandit
 	from game.entities.caravan import Caravan
-	from game.entities.hero.hero import Hero
+	from game.entities.hero import Hero
 	from game.entities.spirit import Spirit
-	from game.entities.base.settlement import Settlement
+	from game.entities.settlement.settlement import Settlement
 
 def find_cattle(dragon: Dragon) -> Optional[Cattle]:
 	"""Find cattle to hunt."""

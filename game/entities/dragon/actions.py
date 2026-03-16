@@ -53,10 +53,10 @@ def on_movement_complete(dragon: Dragon) -> None:
     elif action.action_type == ActionType.REST:
         dragon.engage(EngagementType.RESTING, location=dragon.destination)
     
-    elif action.action_type == ActionType.TEND_HOARD:
+    elif action.action_type == ActionType.HOARD:
         dragon.engage(EngagementType.HOARDING, location=dragon.destination)
     
-    elif action.action_type == ActionType.TEND_SPIRIT:
+    elif action.action_type == ActionType.TEND:
         if dragon.target_entity and dragon.target_entity.is_alive:
             dragon.engage(EngagementType.TENDING, dragon.target_entity)
         else:	# Retry action if target was lost
@@ -71,7 +71,9 @@ def on_movement_complete(dragon: Dragon) -> None:
     elif action.action_type == ActionType.ATTACK:
         if dragon.target_entity and dragon.target_entity.is_alive:
             dragon.engage(EngagementType.COMBAT, dragon.target_entity)
-        elif (dragon.mood == DragonMood.HUNGRY and dragon.is_anthropophage) or dragon.mood == DragonMood.COVETOUS:
+        elif dragon.mood == DragonMood.COVETOUS or (
+            dragon.mood == DragonMood.HUNGRY and dragon.is_anthropophage
+        ):
             start_action(dragon, action)  # Retry finding a target if lost during attack
         else:	# Not hangry - go home
             _default_action(dragon)
@@ -84,7 +86,7 @@ def start_action(dragon: Dragon, action: ScheduledAction) -> None:
     """
     Scheduled.start_action(dragon, action)
 
-    if action.action_type in (ActionType.TEND_HOARD, ActionType.REST):
+    if action.action_type in (ActionType.HOARD, ActionType.REST):
         target = dragon.domain
     elif action.action_type == ActionType.FEED:
         if dragon.is_carnivore:
@@ -139,11 +141,11 @@ def check_for_encounters(dragon: Dragon) -> Optional[ScheduledAction]:
     if dragon.current_action and (
         (	# Evil dragons attack humans near spirits they are tending
             dragon.is_evil and
-            dragon.current_action.action_type == ActionType.TEND_SPIRIT
+            dragon.current_action.action_type == ActionType.TEND
         ) or (	# Dreary dragons attack humans when tending the hoard, unless good
             not dragon.is_good and
             dragon.mood == DragonMood.DREARY and
-            dragon.current_action.action_type == ActionType.TEND_HOARD
+            dragon.current_action.action_type == ActionType.HOARD
         )
     ):
         dragon.interrupt_current(ScheduledAction(
@@ -186,52 +188,49 @@ def resolve_engagement(dragon: Dragon) -> None:
     
     elif engagement.engagement_type == EngagementType.COMBAT:
         # Hungry anthropophage attempts to feed on human target
-        if dragon.is_anthropophage and dragon.mood in (DragonMood.HUNGRY, DragonMood.PENSIVE):
-            from game.entities.hero import HeroMood
+        from game.entities.hero import HeroMood
 
-            settlement_or_bandit = False
-            tired_hero_alone = False
-            has_caravan = False
-            has_protector = False
-            for e in engagement.participants:
-                if e.__class__.__name__ in ('Camp', 'Village', 'City', 'Bandit'):
-                    settlement_or_bandit = True
-                    break
-                elif (
-                    e.__class__.__name__ == 'Hero' and
-                    e.mood == HeroMood.TIRED and
-                    not e.get_nearby_entities(2, 'Camp', 'Village', 'City')
-                ):
-                    tired_hero_alone = True
-                    break
-                elif e.__class__.__name__ == 'Caravan':
-                    has_caravan = True
-                    if dragon.dragon_type == DragonType.BLADE:
-                        break
-                elif e.__class__.__name__ == 'Hero':
-                    has_protector = True
-                elif e.__class__.__name__ == 'Dragon' and e != dragon and e.is_good:
-                    has_protector = True
-
-            if (
-                settlement_or_bandit or 
-                tired_hero_alone or 
-                (has_caravan and (dragon.dragon_type == DragonType.BLADE or not has_protector))
+        settlement = False
+        bandit = False
+        tired_hero_alone = False
+        has_caravan = False
+        has_protector = False
+        for e in engagement.participants:
+            if e.__class__.__name__ in ('Camp', 'Village', 'City'):
+                settlement = True
+                break
+            elif e.__class__.__name__ == 'Bandit':
+                bandit = True
+                break
+            elif (
+                e.__class__.__name__ == 'Hero' and
+                e.mood == HeroMood.TIRED and
+                not e.get_nearby_entities(2, 'Camp', 'Village', 'City')
             ):
+                tired_hero_alone = True
+            elif e.__class__.__name__ == 'Caravan':
+                has_caravan = True
+                if dragon.dragon_type == DragonType.BLADE:
+                    break  # Blade dragons will attack caravans regardless of protectors
+            elif e.__class__.__name__ == 'Hero':
+                has_protector = True
+            elif e.__class__.__name__ == 'Dragon' and e != dragon and e.is_good:
+                has_protector = True
 
-                feed_action = dragon.schedule.find_future_action(
-                    ActionType.FEED,
-                    dragon.world.time.current_day,
-                    dragon.world.time.current_hour
-                )
-                if feed_action:
-                    dragon.schedule.remove(feed_action.day, feed_action.hour)
-            
+        if dragon.is_anthropophage and dragon.mood in (DragonMood.HUNGRY, DragonMood.PENSIVE) and dragon.is_hungry:
+            if (
+                settlement or bandit or
+                ((tired_hero_alone or has_caravan) and (dragon.dragon_type == DragonType.BLADE or not has_protector))
+            ):
+                dragon.is_hungry = False
             else:
                 dragon.schedule.push_action(
                     dragon.current_action.day,
                     dragon.current_action.hour,
                 )
+        elif dragon.mood == DragonMood.COVETOUS:
+            if settlement and not has_protector:
+                dragon.transfer_from(dragon.get_nearby_entities(2, 'Camp', 'Village', 'City')[0])
             
 
         # Fragile dragons may shed a blessing when fighting
@@ -239,5 +238,8 @@ def resolve_engagement(dragon: Dragon) -> None:
             if random() < 0.3:  # 30% chance to drop blessing during attack
                 from game.entities.blessing import drop_blessing
                 drop_blessing(dragon.world, dragon.coordinates, 1)
+        
+
+        # TODO - hero party combat resolution
     
     dragon.complete_current_action()

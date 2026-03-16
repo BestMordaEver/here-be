@@ -1,7 +1,7 @@
 """Scheduled entity mixin - for entities that plan their day."""
 from dataclasses import dataclass, field
 from enum import Enum
-from random import randint
+from random import randint, shuffle
 from typing import Dict, Iterator, List, Optional, Any, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -37,8 +37,8 @@ class ActionType(Enum):
     
     # Dragon-specific
     FEED = "feed"                 # Seek food
-    TEND_SPIRIT = "tend_spirit"   # Tend to a spirit
-    TEND_HOARD = "tend_hoard"     # Accumulate treasure
+    TEND = "tend"                 # Tend to a spirit
+    HOARD = "hoard"               # Accumulate treasure
     
     # Hero-specific
     PATROL = "patrol"             # Patrol for threats
@@ -49,6 +49,9 @@ class ActionType(Enum):
     TRADE = "trade"               # Trade at destination
     DELIVER = "deliver"           # Deliver goods
     SETTLE = "settle"             # Create a camp
+    REPAIR = "repair"             # Restore settlement HP
+    SPAWN_HERO = "spawn_hero"     # Spawn a hero from the settlement
+    EXPAND = "expand"             # Send settler caravan to create camp
     
     # General
     IDLE = "idle"                 # Do nothing
@@ -333,7 +336,7 @@ class DayPlanner:
         self._planned = []
         return self
     
-    def commit(self) -> List[ScheduledAction]:
+    def commit(self, randomize: bool = False) -> List[ScheduledAction]:
         """
         Assign times to all actions and write to schedule.
         
@@ -361,6 +364,10 @@ class DayPlanner:
         spacing = max(1, available / count) if count > 0 else 1
         
         result: List[ScheduledAction] = []
+
+        if randomize:
+            # Shuffle the planned actions to add randomness to their order
+            shuffle(self._planned)
         
         for i, planned in enumerate(self._planned):
             # Calculate preferred hour (spread evenly, anchor at dusk)
@@ -644,10 +651,6 @@ class Scheduled:
             action_type=ActionType.WAKE
         )
         self.start_action(wake_action)
-    
-    def on_hour_end(self, hour: int) -> None:
-        """Called at end of each hour. Override for resolution logic."""
-        pass
     
     # -------------------------------------------------------------------------
     # Compatibility methods for migration from old API
