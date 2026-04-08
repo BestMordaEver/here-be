@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A **fantasy world simulation** where dragons, heroes, settlements, and spirits interact in a procedurally-generated world. Flask web app deployable to Vercel with API endpoints and visual world map.
+This project is a multipart puzzle challenge site where users discover pages by name and reveal hidden elements using various tools. We're tracking endpoint access to see which pages users find. The primary part is a **fantasy world simulation** where dragons, heroes, settlements, and spirits interact in a procedurally-generated world. Flask web app deployable to Vercel with API endpoints and visual world map.
 
 For detailed entity behaviors and planned features, see [todo.txt](../todo.txt).
 
@@ -99,29 +99,6 @@ Entity.start_action = start_action
 # etc.
 ```
 Submodule files: `types.py` (enums/constants), `finders.py` (target search), `schedule.py` (mood + day planning), `actions.py` (action dispatch + engagement resolution), `movement.py` (movement overrides).
-
-### Combat & Engagements
-Entities interact through the **engagement system** (`Entity.engage()`, `Entity.join_engagement()`, `Entity.disengage()`).
-Engagement types: `COMBAT`, `ROBBERY`, `TENDING`, `TRADING`, `FEEDING`, `PILLAGING`, `RESTING`, `HOARDING`.
-Engagements are initiated during `on_hour()` and resolved at `on_hour_end()` via entity-specific `resolve_engagement()` methods.
-Entities can interrupt current actions to respond to encounters via `interrupt_current()`.
-
-## Commands
-
-```bash
-uv sync           # Install dependencies
-gunicorn main:app # Run locally (auto-deploys on git push)
-```
-
-Debug mode (2-minute days): set `debug_speed=True` in `World()` constructor.
-
-## Code Exploration
-
-When discovering signatures or class structures:
-1. Check `game/entities/__init__.py` and `game/entities/base/__init__.py` for exported names
-2. Use `grep_search` with `includePattern` to find definitions, then `read_file` for 15-20 lines around it
-3. Use `list_code_usages` to see how mixins/methods are actually called in practice
-4. Avoid reading 100+ line chunks speculatively - be surgical with line ranges
 
 ## Key Files for Common Tasks
 

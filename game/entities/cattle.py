@@ -3,9 +3,10 @@ from random import randint, random
 from typing import TYPE_CHECKING, Dict, Any, Optional
 
 from .base import (
-    Coordinates, Mobile, Settlement, Mortal, Scheduled, 
+    Coordinates, Mobile, Scheduled, 
     ActionType, ScheduledAction, EngagementType
 )
+from .settlement.settlement import Settlement
 
 if TYPE_CHECKING:
     from game.world import World
@@ -18,7 +19,7 @@ FEAR_RADIUS = 12               # Distance to notice threats
 SCORCHED_FEAR_RADIUS = 8       # Distance to avoid scorched land
 
 
-class Cattle(Mortal, Mobile, Scheduled):
+class Cattle(Mobile, Scheduled):
     """Cattle that wander and graze, fearing dragons and scorched land."""
     
     def __init__(self, world: 'World', color: str, coordinates: Coordinates):
@@ -39,32 +40,17 @@ class Cattle(Mortal, Mobile, Scheduled):
             return False
         
         # Avoid settlements
-        for entity in self.world.entities:
-            if isinstance(entity, Settlement) and entity.occupies(coordinates):
+        for entity in self.world.get_entities_at(coordinates):
+            if isinstance(entity, Settlement):
                 return False
         
         # Avoid scorched land
-        if self._is_scorched(coordinates):
-            return False
+        from game.entities.dragon.domain import Domain
+        for entity in self.world.get_entities_nearby(coordinates, 10, 'Domain'):
+            if isinstance(entity, Domain) and entity.is_scorched:
+                return False
         
         return True
-    
-    def _is_scorched(self, coordinates: Coordinates) -> bool:
-        """Check if coordinates are in scorched dragon territory."""
-        for entity in self.world.entities:
-            if entity.__class__.__name__ == 'Domain':
-                if hasattr(entity, 'is_scorched') and entity.is_scorched:
-                    if entity.get_distance(coordinates) <= 10:  # Scorched radius
-                        return True
-        return False
-    
-    def _find_nearby_village(self) -> Optional[Settlement]:
-        """Find a village within attraction radius."""
-        for entity in self.world.entities:
-            if entity.__class__.__name__ == 'Village' and entity.is_alive:
-                if self.get_distance(entity.coordinates) <= VILLAGE_ATTRACTION_RADIUS:
-                    return entity
-        return None
     
     def build_schedule(self) -> None:
         """Build simple daily schedule - just wander."""
@@ -79,19 +65,10 @@ class Cattle(Mortal, Mobile, Scheduled):
             (ActionType.WANDER, None),
         ])
     
-    def on_hour(self, hour: int) -> None:
-        """Process hourly updates."""
-        if self.is_sleeping:
-            return
-        
-        action = self.get_action_for_hour(hour)
-        if action:
-            self.start_action(action)
-            self._choose_wander_destination()
-    
     def _choose_wander_destination(self) -> None:
         """Choose a destination, gravitating toward villages."""
-        village = self._find_nearby_village()
+        villages = self.get_nearby_entities(VILLAGE_ATTRACTION_RADIUS, 'Village')
+        village = villages[0] if villages else None
         
         for _ in range(10):  # Try 10 times to find valid destination
             if village:
@@ -113,7 +90,7 @@ class Cattle(Mortal, Mobile, Scheduled):
             target = (x, y)
             
             if self.is_passable(target):
-                self.set_destination(target)
+                self.set_target(target)
                 return
         
         # Couldn't find valid destination, stay put
@@ -140,30 +117,17 @@ class Cattle(Mortal, Mobile, Scheduled):
             # If we're being hunted (engaged), we're probably about to die
             # but we still try to flee
             if self.is_engaged():
-                self.disengage("Fleeing!")
+                self.disengage()
             
             self.fleeing_from = other
             self.grazing = False
             self.flee_from(other)
             return ScheduledAction(
-                hour=self.world.time.current_hour if hasattr(self.world, 'time') else 0,
-                action_type=ActionType.FLEE,
-                priority=100
+                hour=self.world.time.current_hour,
+                action_type=ActionType.FLEE
             )
         
         return None
-    
-    def on_hour_end(self, hour: int) -> None:
-        """
-        Resolve any engagement at hour-end.
-        For cattle, this is usually being hunted by a dragon.
-        """
-        if not self.current_engagement:
-            return
-        
-        # If we're being hunted, the dragon's on_hour_end handles resolution
-        # We just clear our engagement state (if we survive)
-        self.current_engagement = None
     
     def serialize(self) -> Dict[str, Any]:
         """Serialize for JSON output."""

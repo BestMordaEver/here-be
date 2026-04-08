@@ -117,27 +117,6 @@ class Domain(Entity, Visible):
             # Scorched domains have a dark background
             self.background_color = "#1a0808"  # Dark red
     
-    def get_background_tiles(self) -> List[Tuple[Coordinates, str]]:
-        """Return background tiles for scorched earth effect.
-        Returns list of (coordinates, background_color) tuples.
-        Only scorched domains affect terrain background.
-        """
-        if not self.is_scorched or self.is_dead:
-            return []
-        
-        tiles = []
-        cx, cy = self.coordinates
-        
-        # Create circle of scorched earth
-        for dy in range(-SCORCH_RADIUS, SCORCH_RADIUS + 1):
-            for dx in range(-SCORCH_RADIUS, SCORCH_RADIUS + 1):
-                # Check if within circle (Euclidean distance)
-                if dx * dx + dy * dy < SCORCH_RADIUS * SCORCH_RADIUS:
-                    x, y = cx + dx, cy + dy
-                    tiles.append(((x, y), self.background_color))
-        
-        return tiles
-    
     def get_scorched_terrain_overlay(self) -> Dict[Coordinates, Tuple[str, str]]:
         """Get terrain overlays for scorched tiles.
         Returns dict mapping coordinates to (symbol, color) for terrain changes.
@@ -210,8 +189,15 @@ class Domain(Entity, Visible):
         data = super().get_visual()
         if self.is_scorched and not self.is_dead:
             # Add scorched earth background
+            tiles = []
+            cx, cy = self.coordinates
+            for dy in range(-SCORCH_RADIUS, SCORCH_RADIUS + 1):
+                for dx in range(-SCORCH_RADIUS, SCORCH_RADIUS + 1):
+                    if dx * dx + dy * dy < SCORCH_RADIUS * SCORCH_RADIUS:
+                        x, y = cx + dx, cy + dy
+                        tiles.append(((x, y), self.background_color))
             data.update({
-                "background_tiles": self.get_background_tiles(),
+                "background_tiles": tiles,
                 "terrain_overlays": self.get_scorched_terrain_overlay()
             })
         

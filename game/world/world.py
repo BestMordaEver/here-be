@@ -8,8 +8,10 @@ from . import HeightMapGenerator, Biome, attempt_spawn_settlement, attempt_spawn
 from .time_system import DayNightCycle, GameTime, TimeOfDay, DAWN_HOUR, DUSK_HOUR, NIGHT_HOUR
 
 if TYPE_CHECKING:
-    from game.entities.base import Scheduled
     from game.entities.base.entity import Entity
+
+from game.entities.base.scheduled import Scheduled
+from game.entities.base.mobile import Mobile
 
 
 # World timing constants
@@ -78,7 +80,7 @@ class World:
         self.entities.append(entity)
         
         # If it's daytime and entity is Scheduled, build its schedule
-        if hasattr(entity, 'build_schedule') and self.time.is_active_hours():
+        if isinstance(entity, Scheduled) and self.time.is_active_hours():
             entity.build_schedule()
     
     def remove_entity(self, entity: 'Entity') -> None:
@@ -88,24 +90,38 @@ class World:
     
     def get_entities_at(self, coordinates):
         """Get all entities at a specific coordinate."""
+        from game.entities.settlement.settlement import Settlement as _Settlement
         result = []
         for e in self.entities:
-            if hasattr(e, 'occupies'):
+            if isinstance(e, _Settlement):
                 if e.occupies(coordinates):
                     result.append(e)
             elif e.coordinates == coordinates:
                 result.append(e)
         return result
     
-    def get_entities_in_radius(self, coordinates, radius: float) -> List:
-        """Get all entities within a radius of coordinates."""
+    def get_entities_nearby(self, coordinates, radius: float, *types: str,
+                            exclude: 'Entity' = None, alive_only: bool = True) -> List['Entity']:
+        """Get entities within a radius of coordinates.
+        
+        Args:
+            coordinates: Centre point to search from.
+            radius: Maximum Euclidean distance (inclusive).
+            *types: Optional class-name strings to filter by.
+            exclude: An entity to skip (typically the caller).
+            alive_only: If True (default), skip dead entities.
+        """
         result = []
         cx, cy = coordinates
         for e in self.entities:
+            if exclude is not None and e is exclude:
+                continue
+            if alive_only and not e.is_alive:
+                continue
             ex, ey = e.coordinates
-            distance = ((ex - cx) ** 2 + (ey - cy) ** 2) ** 0.5
-            if distance <= radius:
-                result.append(e)
+            if ((ex - cx) ** 2 + (ey - cy) ** 2) ** 0.5 <= radius:
+                if not types or e.__class__.__name__ in types:
+                    result.append(e)
         return result
     
     def update(self) -> None:
@@ -144,7 +160,7 @@ class World:
             
             # Trigger hourly updates for active hours
             for entity in list(self.entities):
-                if hasattr(entity, 'on_hour'):
+                if isinstance(entity, Scheduled):
                     entity.on_hour(hour)
                 
                 if period == TimeOfDay.DAWN and hasattr(entity, 'on_dawn'):
@@ -157,14 +173,13 @@ class World:
             
             # Iterate over a copy since entities may be removed during update
             for entity in list(self.entities):
-                if hasattr(entity, 'update_movement'):
+                if isinstance(entity, Mobile):
                     entity.update_movement()
 
              # Get all scheduled entities that are currently moving
             moving_entities: List[Entity] = [
                 e for e in self.entities 
-                if hasattr(e, 'check_for_encounters') and hasattr(e, 'current_action')
-                and e.current_action is not None
+                if isinstance(e, Scheduled) and e.current_action is not None
             ]
             
             for entity in moving_entities:

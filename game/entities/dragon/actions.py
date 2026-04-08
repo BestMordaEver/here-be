@@ -1,4 +1,4 @@
-from random import choice, random
+from random import choice, random, randint
 from typing import TYPE_CHECKING, Optional
 from game.entities.base.entity import EngagementType, Entity
 from game.entities.base.scheduled import Scheduled, ScheduledAction, ActionType
@@ -18,7 +18,7 @@ DOMAIN_PROTECTION_RADIUS = 3  # Radius around domain for protection
 VISION_RADIUS = 10   # How far dragons can see
 TERRITORIAL_RADIUS = 12  # Radius for territorial attacks
 
-def _default_action(dragon: Dragon) -> None:
+def _default_action(dragon: 'Dragon') -> None:
     scheduled_action = dragon.schedule.get(dragon.world.time.current_day, dragon.world.time.current_hour)
     if not scheduled_action or dragon.current_action == scheduled_action:
         start_action(dragon, ScheduledAction(
@@ -28,7 +28,7 @@ def _default_action(dragon: Dragon) -> None:
     else:
         start_action(dragon, scheduled_action)
 
-def on_movement_complete(dragon: Dragon) -> None:
+def on_movement_complete(dragon: 'Dragon') -> None:
     """Called when movement to target completes."""
     if not dragon.current_action:
         return
@@ -79,7 +79,7 @@ def on_movement_complete(dragon: Dragon) -> None:
             _default_action(dragon)
 
 
-def start_action(dragon: Dragon, action: ScheduledAction) -> None:
+def start_action(dragon: 'Dragon', action: ScheduledAction) -> None:
     """
     Start executing a scheduled action.
     May be called by schedule or to retry an action if target was lost.
@@ -90,12 +90,18 @@ def start_action(dragon: Dragon, action: ScheduledAction) -> None:
         target = dragon.domain
     elif action.action_type == ActionType.FEED:
         if dragon.is_carnivore:
-            target = finders.find_cattle(dragon)
+            target = next((e for e in dragon.get_nearby_entities(50, 'Cattle') if not e.current_engagement), None)
             if not target:
                 spirits = finders.find_spirits(dragon, distance_max=9999, spirit_types=[SpiritType.LAKE])
                 target = choice(spirits) if spirits else None
         elif dragon.is_herbivore:
-            target = finders.find_grazing_spot(dragon)
+            target = None
+            for _ in range(20):
+                x = randint(0, dragon.world.WIDTH - 1)
+                y = randint(0, dragon.world.HEIGHT - 1)
+                if dragon.world.get_biome_from_height(dragon.world.height_map[y][x]) == 'field':
+                    target = (x, y)
+                    break
         elif dragon.is_anthropophage:
             settlement = finders.find_settlement_target(dragon)
             human = finders.find_human_target(dragon)
@@ -106,7 +112,11 @@ def start_action(dragon: Dragon, action: ScheduledAction) -> None:
                 target = human
             
     elif action.action_type == ActionType.ATTACK and dragon.mood == DragonMood.COVETOUS:
-        target = finders.find_settlement_with_blessing(dragon) or finders.find_settlement_target(dragon)
+        from game.entities.settlement.settlement import Settlement
+        blessed = [e for e in dragon.world.entities
+                   if isinstance(e, Settlement) and e.__class__.__name__ in ('Village', 'City', 'Camp')
+                   and e.is_alive and e.blessings > 0]
+        target = choice(blessed) if blessed else finders.find_settlement_target(dragon)
         
     else:
         target = action.target
@@ -118,7 +128,7 @@ def start_action(dragon: Dragon, action: ScheduledAction) -> None:
     dragon.set_target(target)
     
 
-def check_for_encounters(dragon: Dragon) -> Optional[ScheduledAction]:
+def check_for_encounters(dragon: 'Dragon') -> Optional[ScheduledAction]:
     """Check for entities that trigger encounters during other actions."""
     if dragon.current_action and (dragon.current_action.action_type in (ActionType.ATTACK, ActionType.PROTECT)):
         return
@@ -172,7 +182,7 @@ def check_for_encounters(dragon: Dragon) -> Optional[ScheduledAction]:
                         ))
 
 
-def resolve_engagement(dragon: Dragon) -> None:
+def resolve_engagement(dragon: 'Dragon') -> None:
     """Resolve an engagement at hour-end."""
     engagement = Entity.resolve_engagement(dragon)
     if not engagement:

@@ -71,17 +71,8 @@ class Entity(Engaging, Pockets):
         return surrounding
     
     def get_nearby_entities(self, radius: float, *types: str) -> List['Entity']:
-        """Get all entities within a radius."""
-        nearby = []
-        for entity in self.world.entities:
-            if entity is self:
-                continue
-            if not entity.is_alive:
-                continue
-            if self.get_distance(entity.coordinates) <= radius:
-                if not types or entity.__class__.__name__ in types:
-                    nearby.append(entity)
-        return nearby
+        """Get nearby alive entities, excluding self."""
+        return self.world.get_entities_nearby(self.coordinates, radius, *types, exclude=self)
 
     def die(self, reason: str) -> None:
         """Handle entity death."""

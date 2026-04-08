@@ -1,5 +1,6 @@
 """Worker camp settlement."""
-from game.entities.base import Coordinates, Settlement, Visible
+from game.entities.base import Coordinates, Visible
+from .settlement import Settlement
 from typing import List, Tuple, TYPE_CHECKING
 
 from game.entities.spirit import SpiritType
@@ -18,7 +19,7 @@ class Camp(Settlement, Extractor):
             world: 'World',
             name: str,
             coordinates: Coordinates,
-            target_spirit: Spirit,
+            target_spirit: 'Spirit',
             home: 'Settlement'
         ):
         super().__init__(world, name, coordinates, life=2)
@@ -46,7 +47,7 @@ class Camp(Settlement, Extractor):
         ]
         # Resolve destination coordinates
         if destination is not None:
-            dest = destination.coordinates if hasattr(destination, 'coordinates') else destination
+            dest = destination.coordinates if not isinstance(destination, tuple) else destination
         else:
             dest = None
 

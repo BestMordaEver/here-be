@@ -58,10 +58,17 @@ class Engagement:
             self.participants.add(self.started_by)
 
     def __str__(self) -> str:
-        participant_names = [getattr(p, 'name', str(p)) for p in self.participants]
+        from .named import Named
+        participant_names = [p.name if isinstance(p, Named) else str(p) for p in self.participants]
         location_str = ""
         if self.location:
-            loc_name = getattr(self.location, 'name', None) or str(getattr(self.location, 'coordinates', self.location))
+            from .entity import Entity
+            if isinstance(self.location, Named):
+                loc_name = self.location.name
+            elif isinstance(self.location, Entity):
+                loc_name = str(self.location.coordinates)
+            else:
+                loc_name = str(self.location)
             location_str = f" at {loc_name}"
         return f"{self.engagement_type.value} [{', '.join(participant_names)}]{location_str} (started {self.started_hour}:00)"
 
@@ -160,7 +167,7 @@ class Engaging:
         """
         # Check if any of the others are already in an engagement we should join
         for other in others:
-            if hasattr(other, 'current_engagement') and other.current_engagement is not None:
+            if other.current_engagement is not None:
                 # Join existing engagement
                 return self.join_engagement(other.current_engagement)
 
@@ -168,7 +175,7 @@ class Engaging:
         engagement = Engagement(
             engagement_type=engagement_type,
             started_by=self,
-            started_hour=getattr(self, 'world', None) and self.world.time.current_hour or 0,
+            started_hour=self.world.time.current_hour if self.world else 0,
             participants={self},  # Will be expanded in __post_init__ but we control it here
             location=location,
         )
@@ -179,8 +186,7 @@ class Engaging:
         # Add other participants
         for other in others:
             engagement.add_participant(other)
-            if hasattr(other, 'current_engagement'):
-                other.current_engagement = engagement
+            other.current_engagement = engagement
 
         return engagement
 

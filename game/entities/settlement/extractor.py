@@ -4,7 +4,8 @@ from game.entities.spirit import Spirit, SpiritType
 
 
 if TYPE_CHECKING:
-    from game.entities.base import Coordinates, Settlement
+    from game.entities.base import Coordinates
+    from game.entities.settlement.settlement import Settlement
 
 
 # Expansion constants

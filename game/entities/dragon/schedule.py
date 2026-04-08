@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from . import Dragon
 
 
-def build_schedule(dragon: Dragon) -> None:
+def build_schedule(dragon: 'Dragon') -> None:
     """Build the day's schedule based on mood."""
     dragon.current_action = None
     

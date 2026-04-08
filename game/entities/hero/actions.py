@@ -1,0 +1,352 @@
+"""Hero actions - start_action, on_hour, encounters, engagement resolution."""
+from random import random, randint, sample
+from typing import TYPE_CHECKING, Optional
+
+from game.entities.base.entity import Entity, EngagementType
+from game.entities.base.scheduled import Scheduled, ScheduledAction, ActionType
+from .types import (
+    HeroMood, PROTECTION_RANGE, PATROL_RANGE, MAX_BLESSINGS, PARTY_SIZE,
+)
+from . import finders
+
+if TYPE_CHECKING:
+    from . import Hero
+    from game.entities.dragon.domain import Domain
+    from game.entities.settlement.settlement import Settlement
+
+
+# ---------------------------------------------------------------------------
+# Action dispatch
+# ---------------------------------------------------------------------------
+
+def _default_action(hero: 'Hero') -> None:
+    """Fall back to the next scheduled action or rest."""
+    scheduled = hero.schedule.get(hero.world.time.current_day, hero.world.time.current_hour)
+    if not scheduled or hero.current_action is scheduled:
+        start_action(hero, ScheduledAction(
+            day=hero.world.time.current_day,
+            hour=hero.world.time.current_hour,
+            action_type=ActionType.REST,
+        ))
+    else:
+        start_action(hero, scheduled)
+
+
+def start_action(hero: 'Hero', action: ScheduledAction) -> None:
+    """Begin executing a scheduled action."""
+    Scheduled.start_action(hero, action)
+
+    if action.action_type in (ActionType.WAKE, ActionType.SLEEP):
+        return  # Handled by Scheduled
+
+    if action.action_type in (ActionType.MOVE_TO, ActionType.PROTECT, ActionType.PILLAGE):
+        if action.target:
+            hero.set_target(action.target)
+        else:
+            hero.complete_current_action()
+
+    elif action.action_type == ActionType.REST:
+        hero.engage(EngagementType.RESTING, location=hero.coordinates)
+
+    elif action.action_type == ActionType.PATROL:
+        x = hero.coordinates[0] + randint(-PATROL_RANGE, PATROL_RANGE)
+        y = hero.coordinates[1] + randint(-PATROL_RANGE, PATROL_RANGE)
+        x = max(0, min(hero.world.WIDTH - 1, x))
+        y = max(0, min(hero.world.HEIGHT - 1, y))
+        hero.set_target((x, y))
+
+    elif action.action_type == ActionType.ESCORT:
+        if action.target and isinstance(action.target, Entity):
+            hero.set_target(action.target)
+        else:
+            hero.complete_current_action()
+
+    elif action.action_type == ActionType.ATTACK:
+        if action.target:
+            hero.set_target(action.target)
+        else:
+            hero.complete_current_action()
+
+    elif action.action_type == ActionType.RETURN_HOME:
+        if hero.home and hero.home.is_alive:
+            hero.set_target(hero.home)
+        else:
+            hero.complete_current_action()
+
+
+# ---------------------------------------------------------------------------
+# Arrival
+# ---------------------------------------------------------------------------
+
+def on_movement_complete(hero: 'Hero') -> None:
+    """Called when the hero arrives at their destination."""
+    if not hero.current_action:
+        return
+
+    action = hero.current_action
+    target = hero.target_entity
+
+    if action.action_type in (ActionType.MOVE_TO, ActionType.PATROL, ActionType.RETURN_HOME):
+        hero.complete_current_action()
+
+    elif action.action_type == ActionType.REST:
+        hero.engage(EngagementType.RESTING, location=hero.coordinates)
+
+    elif action.action_type == ActionType.ESCORT:
+        # Keep following if target still alive and moving
+        if target and target.is_alive:
+            hero.set_target(target)
+        else:
+            hero.complete_current_action()
+
+    elif action.action_type == ActionType.PROTECT:
+        if target and target.is_alive:
+            if target.current_engagement:
+                hero.join_engagement(target.current_engagement)
+            else:
+                hero.engage(EngagementType.RESTING, location=hero.coordinates)
+        else:
+            hero.engage(EngagementType.RESTING, location=hero.coordinates)
+
+    elif action.action_type == ActionType.PILLAGE:
+        hero.engage(EngagementType.PILLAGING, target, location=target.coordinates)
+
+    elif action.action_type == ActionType.ATTACK:
+        if target.is_alive:
+            hero.engage(EngagementType.COMBAT, target)
+        else:
+            hero.complete_current_action()
+
+# ---------------------------------------------------------------------------
+# Hourly passive behavior
+# ---------------------------------------------------------------------------
+
+def on_hour(hero: 'Hero', hour: int) -> None:
+    """Hourly tick: dispatch scheduled actions, then run passive behavior."""
+    Scheduled.on_hour(hero, hour)
+
+    if hero.is_sleeping():
+        return
+
+    # Sell blessings if in a city
+    if hero.blessings > 0:
+        settlement = finders.find_settlement_at(hero)
+        if settlement and settlement.__class__.__name__ == 'City':
+            settlement.blessings += hero.blessings
+            hero.blessings = 0
+            hero.think("Sold my treasures in the city.")
+
+    # Adventurous heroes remember dragon lairs and try to form parties
+    if hero.mood == HeroMood.ADVENTUROUS and not hero.party:
+        for entity in hero.get_nearby_entities(PATROL_RANGE, 'Dragon', 'Domain'):
+            if entity.coordinates not in hero.known_domains:
+                hero.known_domains.add(entity.coordinates)
+                hero.days_domain_known[entity.coordinates] = 0
+                hero.think("I've spotted a dragon lair!")
+
+        if hero.known_domains and not hero.party:
+            # Try to form a dragon-hunting party with nearby heroes sharing domain knowledge
+            nearby = [h for h in hero.get_nearby_entities(PATROL_RANGE, 'Hero') if not h.party]
+            if len(nearby) >= PARTY_SIZE - 1:
+                potential = [
+                    h for h in nearby
+                    if hero.known_domains & h.known_domains
+                ]
+                if len(potential) >= PARTY_SIZE - 1:
+                    party = [hero] + potential[:PARTY_SIZE - 1]
+                    hero.party = party
+                    hero.party_leader = hero
+                    for h in party[1:]:
+                        h.party = party
+                        h.party_leader = hero
+                        h.mood = HeroMood.SUBSERVIENT
+                        hero.acquaintances.add(h)
+                        h.acquaintances.add(hero)
+                    hero.think("Fellow heroes, let us band together!")
+
+    # Active moods spot pillage opportunities
+    if hero.mood in (HeroMood.ADVENTUROUS, HeroMood.MERCENARY, HeroMood.VENGEFUL):
+        from game.entities.dragon.domain import Domain
+        from game.entities.settlement.settlement import Settlement
+        for entity in hero.world.get_entities_nearby(
+            hero.coordinates, PATROL_RANGE, 'Village', 'City', 'Domain', alive_only=False
+        ):
+            if isinstance(entity, Settlement):
+                if entity.can_be_pillaged():
+                    hero.opportunistic_target = entity
+                    hero.think("I see ruins that hold treasure!")
+                    break
+            elif isinstance(entity, Domain):
+                if entity.is_treasury and entity.treasure > 0:
+                    hero.opportunistic_target = entity
+                    hero.think("A dragon's hoard lies unguarded!")
+                    break
+
+    # Become acquaintances with heroes in the same settlement
+    if hero.mood in (HeroMood.ADVENTUROUS, HeroMood.MERCENARY):
+        settlement = finders.find_settlement_at(hero)
+        if settlement:
+            for other in hero.get_nearby_entities(10, 'Hero'):
+                if settlement.occupies(other.coordinates):
+                    hero.acquaintances.add(other)
+                    other.acquaintances.add(hero)
+
+
+# ---------------------------------------------------------------------------
+# Encounter checks (called during movement ticks)
+# ---------------------------------------------------------------------------
+
+def check_for_encounters(hero: 'Hero') -> None:
+    """Check for threats to respond to. May interrupt current action."""
+    if hero.current_action and hero.current_action.action_type in (ActionType.ATTACK, ActionType.PROTECT):
+        return  # Already in combat posture
+
+    if hero.is_sleeping():
+        return
+
+    nearby = hero.get_nearby_entities(
+        PROTECTION_RANGE,
+        'Bandit', 'Caravan', 'Village', 'City', 'Camp',
+    )
+
+    # Attack bandits (always if vengeful, 70% otherwise)
+    for entity in nearby:
+        if entity.__class__.__name__ == 'Bandit' and entity.is_alive:
+            if hero.mood == HeroMood.VENGEFUL or random() < 0.7:
+                hero.interrupt_current(ScheduledAction(
+                    day=hero.world.time.current_day,
+                    hour=hero.world.time.current_hour,
+                    action_type=ActionType.ATTACK,
+                    target=entity,
+                ))
+                hero.think("I shall protect the innocent!")
+                return
+
+    # Protect entities being victimized
+    for entity in nearby:
+        if entity.__class__.__name__ not in ('Caravan', 'Village', 'City', 'Camp'):
+            continue
+        if not entity.current_engagement:
+            continue
+
+        engagement = entity.current_engagement
+        if engagement.engagement_type not in (EngagementType.ROBBERY, EngagementType.COMBAT):
+            continue
+
+        attacker = engagement.started_by
+        if not attacker.is_alive or attacker is hero:
+            continue
+
+        # Blade dragons cannot be defended against
+        if attacker.__class__.__name__ == 'Dragon':
+            from game.entities.dragon.types import DragonType
+            if attacker.dragon_type == DragonType.BLADE:
+                continue
+
+        # Mercenaries prioritize the caravan they're escorting
+        if hero.mood == HeroMood.MERCENARY and entity.__class__.__name__ == 'Caravan':
+            if hero.target_entity is not entity:
+                continue
+
+        hero.interrupt_current(ScheduledAction(
+            day=hero.world.time.current_day,
+            hour=hero.world.time.current_hour,
+            action_type=ActionType.ATTACK,
+            target=attacker,
+        ))
+        hero.think("I shall protect the innocent!")
+        return
+
+
+# ---------------------------------------------------------------------------
+# Engagement resolution (called at hour-end)
+# ---------------------------------------------------------------------------
+
+def resolve_engagement(hero: 'Hero') -> None:
+    """Resolve the hero's current engagement at hour-end."""
+    if hero.is_dead:
+        hero.current_engagement = None
+        return
+
+    engagement = Entity.resolve_engagement(hero)
+    if not engagement:
+        return
+
+    if engagement.engagement_type == EngagementType.RESTING:
+        pass  # Nothing to resolve
+
+    elif engagement.engagement_type == EngagementType.PILLAGING:
+        can_take = MAX_BLESSINGS - hero.blessings
+        if can_take > 0:
+            for other in engagement.participants:
+                if other is hero:
+                    continue
+                if isinstance(other, Settlement) and other.can_be_pillaged():
+                    taken = other.pillage_ruins(can_take)
+                    hero.blessings += taken
+                    hero.think(f"Claimed {taken} blessing{'s' if taken > 1 else ''} from the ruins.")
+                    break
+                if isinstance(other, Domain) and other.treasure > 0:
+                    taken = min(can_take, other.treasure)
+                    other.treasure -= taken
+                    hero.blessings += taken
+                    hero.think(f"Claimed {taken} blessing{'s' if taken > 1 else ''} from the hoard.")
+                    break
+            else:
+                # Pillageable location (from engagement.location)
+                loc = engagement.location
+                if loc and loc is not hero:
+                    if isinstance(loc, Settlement) and loc.can_be_pillaged():
+                        taken = loc.pillage_ruins(can_take)
+                        hero.blessings += taken
+                        hero.think(f"Claimed {taken} blessing{'s' if taken > 1 else ''} from the ruins.")
+                    elif isinstance(loc, Domain) and loc.treasure > 0:
+                        taken = min(can_take, loc.treasure)
+                        loc.treasure -= taken
+                        hero.blessings += taken
+                        hero.think(f"Claimed {taken} blessing{'s' if taken > 1 else ''} from the hoard.")
+
+    elif engagement.engagement_type == EngagementType.COMBAT:
+        others = engagement.get_others(hero)
+
+        for other in others:
+            if not other.is_alive:
+                continue
+
+            if other.__class__.__name__ == 'Dragon':
+                # Full party: dragon dies, but heroes pay a price
+                if hero.party and len(hero.party) >= PARTY_SIZE:
+                    other.die("slain by heroes")
+
+                    from game.entities.dragon.types import DragonType
+                    sacrifices = 2 if other.dragon_type == DragonType.BLADE else 1
+                    candidates = [h for h in hero.party if h is not hero and h.is_alive]
+                    casualties = sample(candidates, min(sacrifices, len(candidates)))
+                    for h in casualties:
+                        h.die("slain by dragon")
+
+                    for h in hero.party:
+                        h.party = None
+                        h.party_leader = None
+                        h.mood = HeroMood.TIRED
+                        h.consecutive_active_days = 0
+                    hero.party = None
+                    hero.party_leader = None
+
+                    hero.think("The beast is slain, but at great cost.")
+                else:
+                    # Solo fight: hero becomes tired (unless vengeful)
+                    if hero.mood != HeroMood.VENGEFUL:
+                        hero.tired_today = True
+
+                    if hero.tired_today and not finders.find_settlement_at(hero):
+                        hero.die("slain by dragon")
+                    else:
+                        hero.think("I barely survived the encounter.")
+
+            elif other.__class__.__name__ == 'Bandit':
+                if hero.mood == HeroMood.VENGEFUL:
+                    other.die("slain by vengeful hero")
+                    hero.think("Justice is served.")
+
+    hero.complete_current_action()

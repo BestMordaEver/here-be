@@ -53,8 +53,8 @@ def drop_blessing(world: 'World', coordinates: Coordinates, count: int = 1) -> N
         return
     
     # Check for existing blessing pile at location
-    for entity in world.entities:
-        if isinstance(entity, Blessing) and entity.coordinates == coordinates:
+    for entity in world.get_entities_at(coordinates):
+        if isinstance(entity, Blessing):
             entity.count += count
             return
     

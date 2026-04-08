@@ -84,12 +84,14 @@ class Thinking:
         thought = None
         
         # Try action-based thought first (based on state)
-        if hasattr(self, 'state') and self.state in ACTION_THOUGHTS:
+        from .mobile import Mobile
+        if isinstance(self, Mobile) and self.state in ACTION_THOUGHTS:
             templates = ACTION_THOUGHTS[self.state]
             thought = random.choice(templates)
             # Format destination if available
-            if hasattr(self, 'destination') and self.destination:
-                dest_name = getattr(self.destination, 'name', str(self.destination))
+            if self.destination:
+                from .named import Named
+                dest_name = self.destination.name if isinstance(self.destination, Named) else str(self.destination)
                 thought = thought.format(destination=dest_name)
         
         # Try intent-based thought

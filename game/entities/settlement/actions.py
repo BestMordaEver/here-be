@@ -29,12 +29,13 @@ def start_action(settlement: 'Settlement', action: ScheduledAction) -> None:
     elif action == ActionType.SPAWN_HERO:
         if not getattr(settlement, "has_village_hero", False):
             from game.entities.hero import Hero
+            from .city import City
             
             hero = Hero(
                 settlement.world,
                 coordinates=settlement.get_spawn_point(),
                 home=settlement,
-                city_born=getattr(settlement, 'is_city', False)
+                city_born=isinstance(settlement, City)
             )
             settlement.world.add_entity(hero)
 

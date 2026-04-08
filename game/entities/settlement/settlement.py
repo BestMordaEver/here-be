@@ -108,5 +108,5 @@ class Settlement(Entity, Named, Thinking, Scheduled, Visible):
         """Serialize settlement to dictionary for JSON output."""
         data = super().serialize()
         data["tiles"] = self.get_tiles()
-        data["debug_info"] = f"{self.name if hasattr(self, 'name') else 'Camp'} {self.coordinates} blessings={self.blessings}"
+        data["debug_info"] = f"{self.name} {self.coordinates} blessings={self.blessings}"
         return data

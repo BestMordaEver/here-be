@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 CIRCLE_RADIUS = 6        # Distance to circle around target
 CIRCLE_STEPS = 8         # Number of steps to complete a circle (8 = octagon)
 
-def update_movement(dragon: Dragon) -> None:
+def update_movement(dragon: 'Dragon') -> None:
 	"""Process movement using Bresenham-style approach."""
 	if dragon.current_action and dragon.current_action.action_type != ActionType.REST and not dragon.in_transit:
 		_update_circling(dragon)
@@ -75,7 +75,7 @@ def update_movement(dragon: Dragon) -> None:
 		dragon.in_transit = False
 		on_movement_complete(dragon)
 
-def _update_circling(dragon: Dragon) -> None:
+def _update_circling(dragon: 'Dragon') -> None:
 	"""Update circling movement around target."""
 	# Advance angle and move to next position
 	if not dragon.destination:

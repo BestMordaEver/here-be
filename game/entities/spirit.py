@@ -1,10 +1,18 @@
 """Spirit base class - stationary entities with domain areas."""
 from typing import TYPE_CHECKING, List, Tuple
+from enum import Enum
 from .base import Entity, Coordinates
 
 
 if TYPE_CHECKING:
     from .dragon import Dragon
+    from game.world import World
+
+
+class SpiritType(Enum):
+    FOREST = 'forest'
+    LAKE = 'lake'
+    MOUNTAIN = 'mountain'
 
 
 class Spirit(Entity):
@@ -14,12 +22,12 @@ class Spirit(Entity):
     def __init__(
         self,
         world: 'World',
-        type: str,
+        type: SpiritType,
         coordinates: Coordinates,
         domain_tiles: List[Tuple[int, int]] = None,
     ):
         super().__init__(world, "", "", coordinates)
-        self.type = type    # forest, water, mountain
+        self.type = type    # forest, lake, mountain
         self.domain_tiles = domain_tiles if domain_tiles is not None else []
         self.is_occupied = False  # Whether a camp is on this spirit
         self.has_blessing = False  # Spirits can store only one blessing

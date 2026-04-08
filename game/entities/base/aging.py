@@ -9,21 +9,22 @@ class Aging:
     """Mixin for entities that age and eventually die of old age.
     
     Subclasses must define:
-        - LIFESPAN_DAYS: class constant or get_lifespan(world) method
         - die(world, reason): method to handle death
     
     Optionally override:
         - on_old_age_death(world): called before die() for cleanup (e.g., clearing drops)
     """
-    
+
     age_days: int
+    lifespan: int
     
-    def __init__(self) -> None:
+    def __init__(self, lifespan: int) -> None:
         self.age_days = 0
+        self.lifespan = lifespan
     
     def get_lifespan(self) -> int:
         """Get lifespan in days. Override for dynamic lifespans."""
-        return getattr(self, 'LIFESPAN_DAYS', 50)
+        return self.lifespan
     
     def on_old_age_death(self) -> None:
         """Called before dying of old age. Override to clear drops, etc."""

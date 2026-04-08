@@ -73,12 +73,12 @@ class ScheduledAction:
     def __str__(self) -> str:
         target_str = ""
         if self.target:
-            if hasattr(self.target, 'name'):
+            if isinstance(self.target, tuple):
+                target_str = f" -> {self.target}"
+            elif hasattr(self.target, 'name'):
                 target_str = f" -> {self.target.name}"
             elif hasattr(self.target, 'coordinates'):
                 target_str = f" -> {self.target.coordinates}"
-            elif isinstance(self.target, tuple):
-                target_str = f" -> {self.target}"
         return f"D{self.day} {self.hour:02d}:00 {self.action_type.value}{target_str}"
 
 
@@ -471,11 +471,6 @@ class Scheduled:
         self.schedule: Schedule = Schedule()
         self.current_action: Optional[ScheduledAction] = None
     
-    @property
-    def world(self) -> 'World':
-        """Access to world instance. Must be set by entity's __init__."""
-        raise NotImplementedError("Subclass must provide world access")
-    
     def _current_time(self) -> TimeKey:
         """Get current (day, hour) from world."""
         return (self.world.time.current_day, self.world.time.current_hour)
@@ -641,7 +636,8 @@ class Scheduled:
     
     def _emergency_wake(self, day: int, hour: int) -> None:
         """Safety mechanism: force a wake action if none scheduled."""
-        if hasattr(self, 'think'):
+        from .thinking import Thinking
+        if isinstance(self, Thinking):
             self.think("Something stirs me to wakefulness.")
         
         # Create immediate wake action

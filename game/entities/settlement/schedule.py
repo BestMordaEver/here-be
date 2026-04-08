@@ -6,9 +6,7 @@ from .types import SettlementEvent
 from . import finders
 
 if TYPE_CHECKING:
-    from game.entities.base import Settlement
-
-
+    from .settlement import Settlement
 
 # Event timing
 MARKET_DAY_INTERVAL = 5  # Market day every 5 days
@@ -25,9 +23,11 @@ TRADE_CHANCE = 0.4                   # Chance to send a trade caravan
 
 def build_schedule(settlement: "Settlement") -> None:
     """Build the day's schedule based on the settlement event."""
+    from .village import Village
+    from .city import City
 
-    is_village = getattr(settlement, 'is_village', False)
-    is_city = getattr(settlement, 'is_city', False)
+    is_village = isinstance(settlement, Village)
+    is_city = isinstance(settlement, City)
 
     settlement.days_since_attack += 1
     settlement.days_since_market += 1

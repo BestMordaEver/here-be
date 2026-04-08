@@ -1,9 +1,9 @@
 """Village settlement."""
 from typing import List, Tuple, TYPE_CHECKING
-from game.entities.base import Coordinates, Named, Settlement
+from game.entities.base import Coordinates, Named
 from game.entities.spirit import SpiritType
+from .settlement import Settlement
 from .ruins import Ruins
-from .events import SettlementEventsMixin
 from .expansion import Expansion
 from .extractor import Extractor
 
@@ -15,21 +15,19 @@ if TYPE_CHECKING:
 
 # Village constants
 LAKE_BLESSING_RADIUS = 10  # Max distance to extract blessing from lake spirit
+RUINS_DURATION_DAYS = 50
 
 # Village init constants
 STARTING_LIFE = 3  # Village starting HP
 
 
-class Village(Settlement, Expansion, SettlementEventsMixin, Ruins):
+class Village(Settlement, Expansion, Ruins):
     """3x3 village with fields, homes, and city square."""
-    
-    RUINS_DURATION_DAYS = 50  # Days before ruins disappear
     
     def __init__(self, world: 'World', name: str, coordinates: Coordinates):
         super().__init__(world, name, coordinates, life=STARTING_LIFE)
-        Ruins.__init__(self)
+        Ruins.__init__(self, ruins_duration=RUINS_DURATION_DAYS)
         Extractor.__init__(self, SpiritType.LAKE)
-        SettlementEventsMixin.__init__(self)
 
         self.create_large("default", [
             ((-1,-1), "#", "#FFD700"),      # Top left field (yellow)

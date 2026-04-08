@@ -9,19 +9,18 @@ if TYPE_CHECKING:
 
 
 # Spire constants
-BLESSING_CONSUMPTION = 1  # Blessings consumed per day to maintain spire
+LIFESPAN_DAYS = 100  # Spire naturally crumbles after this many days
+RUINS_DURATION_DAYS = 50  # Ruins disappear after this many days
 
 
 class Spire(Entity, Aging, Ruins, Visible):
     """A golden tower near a city that enables dragon summoning. Has HP for disrepair."""
     
-    LIFESPAN_DAYS = 100  # Spire naturally crumbles after this many days
-    RUINS_DURATION_DAYS = 50  # Ruins disappear after this many days
     
     def __init__(self, world: 'World', coordinates: Coordinates, city: 'City'):
         super().__init__(world, coordinates)  # Goldenrod color
-        Aging.__init__(self)
-        self.init_ruins()
+        Aging.__init__(self, lifespan=LIFESPAN_DAYS)
+        Ruins.__init__(self, ruins_duration=RUINS_DURATION_DAYS)
         self.city = city  # Parent city
         
         self.create_small("default", "#DAA520", "Ї")

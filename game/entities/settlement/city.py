@@ -1,12 +1,12 @@
 """City settlement."""
 from typing import List, Tuple, TYPE_CHECKING
-from game.entities.base import Coordinates, Settlement, Named, Visible
+from game.entities.base import Coordinates, Named, Visible
 from game.entities.spirit import SpiritType
 from game.world.types import Biome
-from .expansion import Expansion
+from .settlement import Settlement
 from .ruins import Ruins
-from .events import SettlementEventsMixin, SettlementEvent
-
+from .expansion import Expansion
+from .types import SettlementEvent
 
 
 if TYPE_CHECKING:
@@ -16,19 +16,18 @@ if TYPE_CHECKING:
 
 # City constants
 STARTING_LIFE = 5  # City starting HP
+RUINS_DURATION_DAYS = 50  # Days before ruins disappear
 SPIRE_BLESSING_COST = 10  # Blessings needed to spawn spire
 BLESSING_SELL_RANGE = 100  # Max distance to sell blessings to other cities
 
 
-class City(Settlement, Expansion, Named, SettlementEventsMixin, Ruins, Visible):
+class City(Settlement, Expansion, Named, Ruins, Visible):
     """5x5 city with walls, gates, buildings, and roads."""
     
-    RUINS_DURATION_DAYS = 50  # Days before ruins disappear
     
     def __init__(self, world: 'World', name: str, coordinates: Coordinates):
         super().__init__(world, name, coordinates, life=STARTING_LIFE)
-        Ruins.__init__(self)
-        SettlementEventsMixin.__init__(self)
+        Ruins.__init__(self, ruins_duration=RUINS_DURATION_DAYS)
 
         self.create_large("default", [
             ((-2,-2), "#", "#808080"),          # Wall (grey)

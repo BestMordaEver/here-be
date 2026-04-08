@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, List, Set, Tuple
 import random
 import math
 
-from game.entities import Spirit, Village, Settlement
 from game.world.types import Biome
 
 if TYPE_CHECKING:
@@ -31,8 +30,9 @@ def generate_spirits(world: 'World') -> None:
 	Forest spirits spawn on nodes with >= 10 tiles.
 	Spirits spawn at the tile closest to all other tiles in their domain.
 	"""
-	# Map each resource biome to its spirit type and minimum tile threshold
+	from game.entities import Spirit
 	from game.entities.spirit import SpiritType
+	# Map each resource biome to its spirit type and minimum tile threshold
 	biome_spirit_map = {
 		Biome.WATER:    (SpiritType.LAKE,     LAKE_SPIRIT_THRESHOLD),
 		Biome.FOREST:   (SpiritType.FOREST,   FOREST_SPIRIT_THRESHOLD),
@@ -212,6 +212,7 @@ def check_settlement_distance(world: 'World', x: int, y: int, min_distance: int 
 	Check if the given coordinates are at least min_distance away from any settlement.
 	Returns True if far enough from all settlements, False otherwise.
 	"""
+	from game.entities.settlement.settlement import Settlement
 	for entity in world.entities:
 		if issubclass(entity.__class__, Settlement):
 			if entity.get_distance((x,y)) < min_distance:
