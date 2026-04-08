@@ -5,7 +5,6 @@ from typing import List, Optional, Tuple, Dict, Any, TYPE_CHECKING
 # backwards compatibility so existing ``from game.entities.base.entity
 # import EngagementType, Engagement`` continues to work.
 from .engaging import EngagementType, Engagement, Engaging
-from .pockets import Pockets
 
 if TYPE_CHECKING:
     from game.world import World
@@ -13,24 +12,15 @@ if TYPE_CHECKING:
 Coordinates = Tuple[int, int]
 
 
-class Entity(Engaging, Pockets):
-    """Base class for all game entities.
-
-    Inherits engagement logic from :class:`Engaging` and blessing
-    storage from :class:`Pockets`.  Subclasses configure pockets by
-    calling ``Pockets.__init__(self, max_blessings=…)`` in their own
-    ``__init__``.
-    """
+class Entity(Engaging):
+    """Base class for all game entities."""
     
     def __init__(
         self,
         world: 'World',
         coordinates: Coordinates,
-        max_blessings: int = 0,
-        wasteful: bool = False,
     ):
         Engaging.__init__(self)
-        Pockets.__init__(self, max_blessings=max_blessings, wasteful=wasteful)
 
         self.world = world
         self.coordinates = coordinates

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Optional
 from game.entities.base.entity import EngagementType, Entity
 from game.entities.base.scheduled import Scheduled, ScheduledAction, ActionType
 from game.entities.dragon.types import DragonType
-from .types import BanditBehavior, FEAR_RADIUS, MAX_BLESSINGS, ATTACK_RANGE
+from .types import BanditBehavior, FEAR_RADIUS, ATTACK_RANGE
 
 if TYPE_CHECKING:
     from . import Bandit
@@ -182,9 +182,9 @@ def resolve_engagement(bandit: 'Bandit') -> None:
     if engagement.engagement_type == EngagementType.ROBBERY:
         for other in engagement.get_others(bandit):
             if other.__class__.__name__ == 'Caravan' and other.is_alive:
-                if other.blessing and bandit.blessings < MAX_BLESSINGS:
+                if other.blessing and not bandit.is_full:
                     other.blessing = False
-                    bandit.blessings += 1
+                    bandit.store_blessing(1)
                     bandit.think("A fine haul from a caravan!")
                 elif other.blessing:
                     other.blessing = False
@@ -214,28 +214,31 @@ def resolve_engagement(bandit: 'Bandit') -> None:
                 bandits += 1
 
         if bandits > 0 and bandits + attacking_dragons > protectors:
+            from game.entities.settlement.settlement import Settlement
             for entity in others:
-                if entity.__class__.__name__ == 'Bandit':
-                    entity.transfer_from(settlement, entity.max_blessings)
+                if isinstance(entity, Settlement):
+                    for ally in [bandit] + [e for e in others if e.__class__.__name__ == 'Bandit' and e is not bandit]:
+                        ally.transfer_from(entity, ally.available_space())
+                    break
 
     elif engagement.engagement_type == EngagementType.PILLAGING:
         from game.entities.dragon.domain import Domain
         from game.entities.settlement.settlement import Settlement
-        can_take = MAX_BLESSINGS - bandit.blessings
+        can_take = bandit.available_space()
         if can_take > 0:
             for other in engagement.participants:
                 if other is bandit:
                     continue
                 if isinstance(other, Settlement) and other.can_be_pillaged():
                     taken = other.pillage_ruins(can_take)
-                    bandit.blessings += taken
+                    bandit.store_blessing(taken)
                     bandit.days_since_robbery = 0
                     bandit.think(f"Looted {taken} blessing{'s' if taken > 1 else ''} from the ruins.")
                     break
                 if isinstance(other, Domain) and other.treasure > 0:
                     taken = min(can_take, other.treasure)
                     other.treasure -= taken
-                    bandit.blessings += taken
+                    bandit.store_blessing(taken)
                     bandit.days_since_robbery = 0
                     bandit.think(f"Looted {taken} blessing{'s' if taken > 1 else ''} from the hoard.")
                     break

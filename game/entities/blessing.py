@@ -1,12 +1,12 @@
 """Blessing entity - dropped blessings that can be picked up."""
-from .base import Coordinates, Entity
+from .base import Coordinates, Entity, Pockets
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from game.world import World
 
 
-class Blessing(Entity):
+class Blessing(Entity, Pockets):
     """A dropped blessing that persists until picked up.
     
     Blessings are dropped when:
@@ -22,18 +22,28 @@ class Blessing(Entity):
     
     def __init__(self, world: 'World', coordinates: Coordinates, count: int = 1):
         super().__init__(world, "#FFD700", "✦", coordinates)  # Gold star
-        self.count = count  # Number of blessings at this location
+        Pockets.__init__(self, max_blessings=-1)
+        self.store_blessing(count)
+    
+    @property
+    def count(self) -> int:
+        """Number of blessings at this location."""
+        return self.blessings
+    
+    @count.setter
+    def count(self, value: int) -> None:
+        self.blessings = value
     
     def take(self, amount: int = 1) -> int:
         """Take blessings from this pile. Returns amount actually taken."""
-        taken = min(amount, self.count)
-        self.count -= taken
+        taken = min(amount, self.blessings)
+        self.blessings -= taken
         return taken
     
     @property
     def is_empty(self) -> bool:
         """Check if all blessings have been taken."""
-        return self.count <= 0
+        return not self.has_blessings
     
     def update(self) -> None:
         """Remove self if empty."""

@@ -4,6 +4,7 @@ from ..base.entity import Entity, Coordinates
 from ..base.thinking import Thinking
 from ..base.scheduled import Scheduled
 from ..base.visible import Visible
+from ..base.pockets import Pockets
 from game.world.types import Biome
 from typing import Dict, Any, List, Optional, Tuple, TYPE_CHECKING
 
@@ -12,7 +13,7 @@ if TYPE_CHECKING:
     from game.entities import Caravan
 
 
-class Settlement(Entity, Named, Thinking, Scheduled, Visible):
+class Settlement(Entity, Named, Thinking, Scheduled, Visible, Pockets):
     """Base class for all settlement types. Includes health/life management."""
     
     def __init__(
@@ -27,6 +28,7 @@ class Settlement(Entity, Named, Thinking, Scheduled, Visible):
         Thinking.__init__(self)
         Scheduled.__init__(self)
         Visible.__init__(self)
+        Pockets.__init__(self, max_blessings=-1)
         
         # Health system for settlements
         self.max_life = life
@@ -35,9 +37,6 @@ class Settlement(Entity, Named, Thinking, Scheduled, Visible):
         # Event tracking
         self.days_since_market = 0
         self.days_since_celebration = 0
-        
-        # Blessing system - only resource that matters
-        self.blessings = 0
     
     def hurt(self, damage: int, source: str) -> None:
         """Inflict damage to the settlement."""

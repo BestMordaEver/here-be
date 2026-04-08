@@ -61,10 +61,10 @@ class Camp(Settlement, Extractor):
     def die(self, cause: str) -> None:
         """Handle camp death."""
         # Drop blessings
-        if self.blessings > 0:
+        dropped = self.empty_blessings()
+        if dropped > 0:
             from ..blessing import drop_blessing
-            drop_blessing(self.world, self.coordinates, self.blessings)
-            self.blessings = 0
+            drop_blessing(self.world, self.coordinates, dropped)
         
         super().die(cause)
         
@@ -77,7 +77,7 @@ class Camp(Settlement, Extractor):
             return
         
         # Send blessing to parent settlement if we have one
-        if self.blessings > 0 and self.home and self.home.is_alive:
+        if self.has_blessings and self.home and self.home.is_alive:
             from ..caravan import Caravan, CaravanMission
             
             # Create caravan to deliver blessing

@@ -6,7 +6,7 @@ class DragonMood(Enum):
     INSPIRED = "inspired"   # Tends hoard, travels to distant spirits
     PENSIVE = "pensive"     # Feeds once, tends nearby spirit
     HUNGRY = "hungry"       # Feeds twice, rests between (every 3 days)
-    COVETOUS = "covetous"   # Attacks settlement, steals blessing
+    COVETOUS = "covetous"   # Attacks settlement
     
 class DragonType(Enum):
     """Dragon types determining appearance and some behaviors."""
@@ -35,5 +35,5 @@ class DragonDiet(Enum):
     """Dragon diets determining feeding behavior."""
     CARNIVORE = "carnivore"         # Hunts cattle and fish
     HERBIVORE = "herbivore"         # Grazes on plains
-    GREED = "greed"                 # Steals blessings from settlements instead of feeding
+    GREED = "greed"                 # Attacks settlements instead of feeding
     ANTHROPOPHAGE = "anthropophage" # Exclusively hunts humans

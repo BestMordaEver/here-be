@@ -52,6 +52,6 @@ class Extractor:
         for spirit in self.nearby_spirits:
             if spirit.is_alive and spirit.has_blessing:
                 spirit.take_blessing()
-                self.blessings += 1
+                self.store_blessing(1)
                 return
 

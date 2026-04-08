@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Optional
 from game.entities.base.entity import Entity, EngagementType
 from game.entities.base.scheduled import Scheduled, ScheduledAction, ActionType
 from .types import (
-    HeroMood, PROTECTION_RANGE, PATROL_RANGE, MAX_BLESSINGS, PARTY_SIZE,
+    HeroMood, PROTECTION_RANGE, PATROL_RANGE, PARTY_SIZE,
 )
 from . import finders
 
@@ -129,11 +129,10 @@ def on_hour(hero: 'Hero', hour: int) -> None:
         return
 
     # Sell blessings if in a city
-    if hero.blessings > 0:
+    if hero.has_blessings:
         settlement = finders.find_settlement_at(hero)
         if settlement and settlement.__class__.__name__ == 'City':
-            settlement.blessings += hero.blessings
-            hero.blessings = 0
+            hero.transfer_to(settlement, hero.blessings)
             hero.think("Sold my treasures in the city.")
 
     # Adventurous heroes remember dragon lairs and try to form parties
@@ -276,20 +275,20 @@ def resolve_engagement(hero: 'Hero') -> None:
         pass  # Nothing to resolve
 
     elif engagement.engagement_type == EngagementType.PILLAGING:
-        can_take = MAX_BLESSINGS - hero.blessings
+        can_take = hero.available_space()
         if can_take > 0:
             for other in engagement.participants:
                 if other is hero:
                     continue
                 if isinstance(other, Settlement) and other.can_be_pillaged():
                     taken = other.pillage_ruins(can_take)
-                    hero.blessings += taken
+                    hero.store_blessing(taken)
                     hero.think(f"Claimed {taken} blessing{'s' if taken > 1 else ''} from the ruins.")
                     break
                 if isinstance(other, Domain) and other.treasure > 0:
                     taken = min(can_take, other.treasure)
                     other.treasure -= taken
-                    hero.blessings += taken
+                    hero.store_blessing(taken)
                     hero.think(f"Claimed {taken} blessing{'s' if taken > 1 else ''} from the hoard.")
                     break
             else:
@@ -298,12 +297,12 @@ def resolve_engagement(hero: 'Hero') -> None:
                 if loc and loc is not hero:
                     if isinstance(loc, Settlement) and loc.can_be_pillaged():
                         taken = loc.pillage_ruins(can_take)
-                        hero.blessings += taken
+                        hero.store_blessing(taken)
                         hero.think(f"Claimed {taken} blessing{'s' if taken > 1 else ''} from the ruins.")
                     elif isinstance(loc, Domain) and loc.treasure > 0:
                         taken = min(can_take, loc.treasure)
                         loc.treasure -= taken
-                        hero.blessings += taken
+                        hero.store_blessing(taken)
                         hero.think(f"Claimed {taken} blessing{'s' if taken > 1 else ''} from the hoard.")
 
     elif engagement.engagement_type == EngagementType.COMBAT:

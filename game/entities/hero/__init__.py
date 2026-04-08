@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, Dict, Any, List, Optional, Set
 
-from game.entities.base import Coordinates, Mobile, Thinking, Scheduled, Aging, Visible
+from game.entities.base import Coordinates, Mobile, Thinking, Scheduled, Aging, Visible, Pockets
 from game.world.types import Biome
 from .types import HeroMood, LIFESPAN_DAYS, PARTY_SIZE, MAX_BLESSINGS, PATROL_RANGE
 
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from game.entities.settlement.settlement import Settlement
 
 
-class Hero(Mobile, Visible, Thinking, Scheduled, Aging):
+class Hero(Mobile, Visible, Thinking, Scheduled, Aging, Pockets):
     """A hero that protects settlements and slays dragons."""
 
     def __init__(
@@ -29,6 +29,7 @@ class Hero(Mobile, Visible, Thinking, Scheduled, Aging):
         Thinking.__init__(self)
         Scheduled.__init__(self)
         Aging.__init__(self, lifespan=LIFESPAN_DAYS)
+        Pockets.__init__(self, max_blessings=MAX_BLESSINGS)
 
         self.color = color
         self.char = "♦"
@@ -48,9 +49,6 @@ class Hero(Mobile, Visible, Thinking, Scheduled, Aging):
         # Party management
         self.party: Optional[List['Hero']] = None
         self.party_leader: Optional['Hero'] = None
-
-        # Inventory
-        self.blessings: int = 0
 
         # Memory
         self.known_domains: Set = set()               # Domain coordinates
@@ -88,15 +86,15 @@ class Hero(Mobile, Visible, Thinking, Scheduled, Aging):
 
     def on_old_age_death(self) -> None:
         """Clear blessings before dying of old age so nothing drops."""
-        self.blessings = 0
+        self.empty_blessings()
 
     def die(self, reason: str) -> None:
         """Handle hero death - drop blessings, notify acquaintances, leave party."""
         # Drop carried blessings (already 0 if old age via on_old_age_death)
-        if self.blessings > 0:
+        dropped = self.empty_blessings()
+        if dropped > 0:
             from game.entities.blessing import drop_blessing
-            drop_blessing(self.world, self.coordinates, self.blessings)
-            self.blessings = 0
+            drop_blessing(self.world, self.coordinates, dropped)
 
         super().die(reason)
 

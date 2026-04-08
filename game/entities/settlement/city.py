@@ -147,7 +147,7 @@ class City(Settlement, Expansion, Named, Ruins, Visible):
                 self._attempt_create_spire()
         
         # Cities with spires sell blessings to other cities without spires
-        if self.spire and self.spire.is_alive and self.blessings > 1:
+        if self.spire and self.spire.is_alive and self.has_blessings and self.blessings > 1:
             # Find cities without spires in range
             target_cities = []
             for entity in self.world.entities:

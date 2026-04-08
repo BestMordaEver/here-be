@@ -115,7 +115,7 @@ def start_action(dragon: 'Dragon', action: ScheduledAction) -> None:
         from game.entities.settlement.settlement import Settlement
         blessed = [e for e in dragon.world.entities
                    if isinstance(e, Settlement) and e.__class__.__name__ in ('Village', 'City', 'Camp')
-                   and e.is_alive and e.blessings > 0]
+                   and e.is_alive and e.has_blessings]
         target = choice(blessed) if blessed else finders.find_settlement_target(dragon)
         
     else:
@@ -239,8 +239,7 @@ def resolve_engagement(dragon: 'Dragon') -> None:
                     dragon.current_action.hour,
                 )
         elif dragon.mood == DragonMood.COVETOUS:
-            if settlement and not has_protector:
-                dragon.transfer_from(dragon.get_nearby_entities(2, 'Camp', 'Village', 'City')[0])
+            pass  # Covetous dragons just attack, no blessing theft
             
 
         # Fragile dragons may shed a blessing when fighting

@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING, Dict, Any, Optional
 
 from game.entities.base import (
-    Coordinates, Mobile, Scheduled, Aging, Thinking, Visible,
+    Coordinates, Mobile, Scheduled, Aging, Thinking, Visible, Pockets,
 )
 from game.entities.settlement.settlement import Settlement
 from game.world.types import Biome
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from game.world import World
 
 
-class Bandit(Mobile, Visible, Thinking, Scheduled, Aging):
+class Bandit(Mobile, Visible, Thinking, Scheduled, Aging, Pockets):
     """Bandits that ambush caravans and pillage ruins."""
 
     def __init__(self, world: 'World', coordinates: Coordinates):
@@ -22,13 +22,13 @@ class Bandit(Mobile, Visible, Thinking, Scheduled, Aging):
         Thinking.__init__(self)
         Scheduled.__init__(self)
         Aging.__init__(self)
+        Pockets.__init__(self, max_blessings=MAX_BLESSINGS, wasteful=True)
 
         self.create_small("default", "#960000", "Ω")
         self.visual_state = "default"
 
         # State
         self.behavior = BanditBehavior.LURKING
-        self.blessings: int = 0
         self.days_since_robbery: int = 0
         self.hiding_spot: Optional[Coordinates] = None
         self.fleeing_from = None
@@ -76,14 +76,14 @@ class Bandit(Mobile, Visible, Thinking, Scheduled, Aging):
 
     def on_old_age_death(self) -> None:
         """Clear blessings before dying of old age so nothing drops."""
-        self.blessings = 0
+        self.empty_blessings()
 
     def die(self, reason: str) -> None:
         """Handle bandit death — drop blessings."""
-        if self.blessings > 0:
+        dropped = self.empty_blessings()
+        if dropped > 0:
             from game.entities.blessing import drop_blessing
-            drop_blessing(self.world, self.coordinates, self.blessings)
-            self.blessings = 0
+            drop_blessing(self.world, self.coordinates, dropped)
 
         super().die(reason)
 

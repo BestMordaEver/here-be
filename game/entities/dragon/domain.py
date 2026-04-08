@@ -1,7 +1,7 @@
 """Domain - a dragon's treasury and territory marker."""
 from typing import TYPE_CHECKING, Dict, Any, List, Optional, Tuple
 
-from game.entities.base import Coordinates, Entity, Visible
+from game.entities.base import Coordinates, Entity, Visible, Pockets
 from game.world import Biome
 from .types import DomainType
 
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 SCORCH_RADIUS = 10  # Radius of scorched earth effect
 
 
-class Domain(Entity, Visible):
+class Domain(Entity, Visible, Pockets):
     """A dragon's domain - their territory marker and treasury."""
 
     # Valid spawn terrain by domain type
@@ -102,6 +102,7 @@ class Domain(Entity, Visible):
         # Domain color matches dragon color
         super().__init__(world, coordinates)
         Visible.__init__(self)
+        Pockets.__init__(self, max_blessings=-1)
 
         self.create_small("default", dragon.color, "ʘ")
         self.visual_state = "default"
@@ -109,7 +110,6 @@ class Domain(Entity, Visible):
         
         self.dragon = dragon
         self.is_scorched = is_scorched
-        self.blessings = 0  # Accumulated blessings
         self.background_color = None  # Background color for scorched domains
         self.is_treasury = False  # Becomes true when dragon dies
         

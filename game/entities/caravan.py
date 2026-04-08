@@ -3,7 +3,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Dict, Any, Optional
 
 from .base import (
-    Coordinates, Mobile, Thinking, Scheduled, 
+    Coordinates, Mobile, Thinking, Scheduled, Pockets,
     ActionType, ScheduledAction, EngagementType
 )
 from .settlement.settlement import Settlement
@@ -26,7 +26,7 @@ class CaravanMission(Enum):
     DELIVER_BLESSING = "deliver_blessing"  # Deliver blessing to parent settlement
 
 
-class Caravan(Mobile, Thinking, Scheduled):
+class Caravan(Mobile, Thinking, Scheduled, Pockets):
     """A caravan that travels between settlements."""
 
     def __init__(
@@ -41,6 +41,7 @@ class Caravan(Mobile, Thinking, Scheduled):
         Mobile.__init__(self, world, "#2b1c00", '@', coordinates, loiter=4)  # Caravans skip 4 cycles
         Thinking.__init__(self, intent=mission.value)
         Scheduled.__init__(self)
+        Pockets.__init__(self, max_blessings=1)
         
         self.home = home
         self.destination = destination
@@ -136,11 +137,11 @@ class Caravan(Mobile, Thinking, Scheduled):
         elif self.mission == CaravanMission.RETRIEVE_BLESSING:
             if self.returning:
                 if self.blessing and self.home and self.home.is_alive:
-                    self.home.blessings += 1
+                    self.home.store_blessing(1)
                     self.think("Delivered the blessing.")
                 self.die("success")
                 return
-            if not isinstance(self.destination, tuple) and self.destination.blessings > 0:
+            if not isinstance(self.destination, tuple) and self.destination.has_blessings:
                 self.destination.blessings -= 1
                 self.blessing = True
                 self.think("Acquired a blessing.")
@@ -154,7 +155,7 @@ class Caravan(Mobile, Thinking, Scheduled):
 
         elif self.mission == CaravanMission.DELIVER_BLESSING:
             if self.blessing and self.destination and not isinstance(self.destination, tuple):
-                self.destination.blessings += 1
+                self.destination.store_blessing(1)
                 self.blessing = False
                 self.think("Blessing delivered!")
             self.die("success")

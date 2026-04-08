@@ -1,7 +1,7 @@
 """Spirit base class - stationary entities with domain areas."""
 from typing import TYPE_CHECKING, List, Tuple
 from enum import Enum
-from .base import Entity, Coordinates
+from .base import Entity, Coordinates, Pockets
 
 
 if TYPE_CHECKING:
@@ -15,7 +15,7 @@ class SpiritType(Enum):
     MOUNTAIN = 'mountain'
 
 
-class Spirit(Entity):
+class Spirit(Entity, Pockets):
     """Spirits are stationary entities representing natural domains. 
     Domain size is fixed by tileset. Tending by dragons creates blessings."""
 
@@ -27,16 +27,21 @@ class Spirit(Entity):
         domain_tiles: List[Tuple[int, int]] = None,
     ):
         super().__init__(world, "", "", coordinates)
+        Pockets.__init__(self, max_blessings=1)
         self.type = type    # forest, lake, mountain
         self.domain_tiles = domain_tiles if domain_tiles is not None else []
         self.is_occupied = False  # Whether a camp is on this spirit
-        self.has_blessing = False  # Spirits can store only one blessing
+    
+    @property
+    def has_blessing(self) -> bool:
+        """Whether this spirit currently holds a blessing."""
+        return self.has_blessings
     
     def get_tended(self) -> bool:
         """When tended by a dragon, create a blessing if none exists.
         Returns True if a blessing was created."""
         if not self.has_blessing:
-            self.has_blessing = True
+            self.store_blessing(1)
             return True
         return False
     
@@ -44,7 +49,7 @@ class Spirit(Entity):
         """Take the blessing from this spirit.
         Returns True if a blessing was taken."""
         if self.has_blessing:
-            self.has_blessing = False
+            self.empty_blessings()
             return True
         return False
     
