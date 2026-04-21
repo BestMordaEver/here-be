@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Optional
 
 from game.entities.base.entity import Entity, EngagementType
 from game.entities.base.scheduled import Scheduled, ScheduledAction, ActionType
+from game.entities.base.thinking import Memory, MemoryType
 from .types import (
     HeroMood, PROTECTION_RANGE, PATROL_RANGE, PARTY_SIZE,
 )
@@ -142,6 +143,13 @@ def on_hour(hero: 'Hero', hour: int) -> None:
                 hero.known_domains.add(entity.coordinates)
                 hero.days_domain_known[entity.coordinates] = 0
                 hero.think("I've spotted a dragon lair!")
+                hero.add_memory(Memory(
+                    type=MemoryType.SAW_DOMAIN,
+                    subject=entity,
+                    location=entity.coordinates,
+                    day=hero.world.time.current_day,
+                    source=hero,
+                ))
 
         if hero.known_domains and not hero.party:
             # Try to form a dragon-hunting party with nearby heroes sharing domain knowledge
@@ -203,6 +211,11 @@ def check_for_encounters(hero: 'Hero') -> None:
     if hero.is_sleeping():
         return
 
+    # Exchange events with nearby talkers
+    for entity in hero.get_nearby_entities(PROTECTION_RANGE):
+        if hasattr(entity, 'is_talker') and entity.is_talker:
+            hero.exchange_memories(entity)
+
     nearby = hero.get_nearby_entities(
         PROTECTION_RANGE,
         'Bandit', 'Caravan', 'Village', 'City', 'Camp',
@@ -211,6 +224,13 @@ def check_for_encounters(hero: 'Hero') -> None:
     # Attack bandits (always if vengeful, 70% otherwise)
     for entity in nearby:
         if entity.__class__.__name__ == 'Bandit' and entity.is_alive:
+            hero.add_memory(Memory(
+                type=MemoryType.SAW_BANDIT,
+                subject=entity,
+                location=entity.coordinates,
+                day=hero.world.time.current_day,
+                source=hero,
+            ))
             if hero.mood == HeroMood.VENGEFUL or random() < 0.7:
                 hero.interrupt_current(ScheduledAction(
                     day=hero.world.time.current_day,
@@ -238,6 +258,13 @@ def check_for_encounters(hero: 'Hero') -> None:
 
         # Blade dragons cannot be defended against
         if attacker.__class__.__name__ == 'Dragon':
+            hero.add_memory(Memory(
+                type=MemoryType.SAW_DRAGON,
+                subject=attacker,
+                location=attacker.coordinates,
+                day=hero.world.time.current_day,
+                source=hero,
+            ))
             from game.entities.dragon.types import DragonType
             if attacker.dragon_type == DragonType.BLADE:
                 continue

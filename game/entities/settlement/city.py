@@ -133,6 +133,11 @@ class City(Settlement, Expansion, Named, Ruins, Visible):
     
     def on_dawn(self) -> None:
         """Handle dawn event - build schedule and try selling blessings."""
+        self.subsidiary_camps = [c for c in self.subsidiary_camps if c.is_alive]
+        if self.spire and not self.spire.is_alive:
+            self.spire = None
+        self.prune_stale_memories(self.world.time.current_day)
+
         if self.process_ruins():
             return
         

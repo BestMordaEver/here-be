@@ -101,6 +101,7 @@ class Settlement(Entity, Named, Thinking, Scheduled, Visible, Pockets):
             mission=mission,
             target_spirit=target_spirit
         )
+        caravan.inherit_top_memory(self)
         
         self.world.add_entity(caravan)
         return caravan

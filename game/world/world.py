@@ -65,6 +65,12 @@ class World:
         # Trigger initial dawn to build schedules
         self._trigger_dawn()
 
+    def _trigger_dawn(self) -> None:
+        """Trigger dawn processing for all entities."""
+        for entity in list(self.entities):
+            if hasattr(entity, 'on_dawn'):
+                entity.on_dawn()
+
     @staticmethod
     def get_biome_from_height(height):
         if height < World.THRESHOLDS[Biome.WATER]:
@@ -79,8 +85,8 @@ class World:
         """Add an entity to the world."""
         self.entities.append(entity)
         
-        # If it's daytime and entity is Scheduled, build its schedule
-        if isinstance(entity, Scheduled) and self.time.is_active_hours():
+        # If entity is Scheduled, build its schedule
+        if isinstance(entity, Scheduled):
             entity.build_schedule()
     
     def remove_entity(self, entity: 'Entity') -> None:

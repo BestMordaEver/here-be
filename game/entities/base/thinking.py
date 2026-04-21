@@ -1,108 +1,199 @@
-"""Thinking entity mixin - for entities that have thoughts."""
-from typing import List
-import random
+"""Thinking mixin — thought memory, information exchange, and written logs.
 
-# Thinking constants
-MAX_THOUGHTS = 20  # Maximum thoughts kept in history
-THOUGHT_INTERVAL_HOURS_MIN = 2  # Minimum game hours between thoughts
-THOUGHT_INTERVAL_HOURS_MAX = 6  # Maximum game hours between thoughts
+Talkers (Settlement, Hero, Caravan) store a bounded set of thoughts in memory
+and exchange them on encounter/arrival. Writers (City, Village, Dragon, Hero)
+periodically render thoughts into a human-readable log visible to players.
+"""
+from dataclasses import dataclass
+from enum import IntEnum
+from typing import List, Optional, TYPE_CHECKING
 
-# Thought templates for different intents/states
-IDLE_THOUGHTS = [
-    "The wind whispers through the grass...",
-    "What lies beyond the horizon?",
-    "A peaceful moment in troubled times.",
-    "The sun feels warm today.",
-    "I wonder what tomorrow will bring.",
-]
+if TYPE_CHECKING:
+    from .entity import Entity, Coordinates
 
-ACTION_THOUGHTS = {
-    "moving": [
-        "Onward to {destination}.",
-        "The road stretches ahead.",
-        "Each step brings me closer.",
-    ],
-    "trading": [
-        "Bartering for fair exchange.",
-        "Commerce keeps us all alive.",
-        "A good trade benefits both parties.",
-    ],
-    "fleeing": [
-        "Must escape! Must survive!",
-        "No time to look back!",
-        "Danger behind, safety ahead!",
-    ],
-    "arrived": [
-        "Finally, I have arrived.",
-        "The journey is complete.",
-        "This place will do.",
-    ],
+
+# ---------------------------------------------------------------------------
+# Memory system
+# ---------------------------------------------------------------------------
+
+class MemoryType(IntEnum):
+    """Memory types in order of rising priority."""
+    SAW_DRAGON = 1
+    SAW_BANDIT = 2
+    VILLAGE_HAS_BLESSING = 3
+    ATTACKED_BY_BANDIT = 4
+    SAW_DOMAIN = 5
+    ATTACKED_BY_DRAGON = 6
+    SAW_HERO_DIE = 7
+
+
+@dataclass
+class Memory:
+    """A discrete piece of information an entity can remember and exchange.
+
+    Attributes:
+        type:       What happened (determines priority).
+        subject:    The entity most relevant to the memory (dragon, bandit, hero…).
+        location:   Where the memory was recorded.
+        day:        Game-day the memory was created.
+        source:     The original witness.
+        remarked:   Whether a writer has already logged this memory.
+    """
+    type: MemoryType
+    subject: Optional['Entity'] = None
+    location: Optional['Coordinates'] = None
+    day: int = 0
+    source: Optional['Entity'] = None
+    remarked: bool = False
+
+    @property
+    def priority(self) -> int:
+        return int(self.type)
+
+    def identity_key(self) -> tuple:
+        """Key used for deduplication — same type + same subject = duplicate."""
+        return (self.type, id(self.subject))
+
+
+# ---------------------------------------------------------------------------
+# Memory capacities per entity kind
+# ---------------------------------------------------------------------------
+
+MEMORY_CAPACITY = {
+    'Caravan': 1,
+    'Hero': 3,
+    'Village': 3,
+    'City': 5,
+    'Camp': 2,
+}
+DEFAULT_MEMORY_CAPACITY = 0  # Non-talkers have no memory
+
+# Days after which a memory type expires and is automatically pruned.
+# Types not listed here never expire.
+MEMORY_STALENESS: dict[MemoryType, int] = {
+    MemoryType.SAW_DRAGON: 3,
+    MemoryType.SAW_BANDIT: 2,
+    MemoryType.VILLAGE_HAS_BLESSING: 5,
+    MemoryType.ATTACKED_BY_BANDIT: 5,
+    MemoryType.SAW_DOMAIN: 10,
+    MemoryType.ATTACKED_BY_DRAGON: 10,
+    MemoryType.SAW_HERO_DIE: 10,
 }
 
-INTENT_THOUGHTS = {
-    "settle": [
-        "A new home awaits construction.",
-        "This land will serve us well.",
-    ],
-    "trade": [
-        "Goods to deliver, resources to collect.",
-        "The economy depends on us.",
-    ],
-    "foraging": [
-        "The grass here looks tasty.",
-        "Where is the best grazing?",
-    ],
-}
 
+# ---------------------------------------------------------------------------
+# Thinking mixin
+# ---------------------------------------------------------------------------
 
 class Thinking:
+    """Mixin providing memory transport (talkers) and a written thought log (writers)."""
 
-    def __init__(self, intent: str = "idle"):
+    def __init__(self, capacity: int = DEFAULT_MEMORY_CAPACITY):
+        # Memory — bounded priority queue
+        self._memory_capacity: int = capacity
+        self._memories: List[Memory] = []
+
+        # Written log — append-only, for player display
         self.thoughts: List[str] = []
-        self.intent: str = intent
-        self._last_thought_hour: int = -999
-        self._next_thought_interval: int = random.randint(THOUGHT_INTERVAL_HOURS_MIN, THOUGHT_INTERVAL_HOURS_MAX)
+
+    # ------------------------------------------------------------------
+    # Memory (talkers)
+    # ------------------------------------------------------------------
+
+    @property
+    def is_talker(self) -> bool:
+        return self._memory_capacity > 0
+
+    @property
+    def memories(self) -> List[Memory]:
+        return list(self._memories)
+
+    def add_memory(self, event: Memory) -> None:
+        """Insert *event* into memory, evicting the lowest-priority entry if full.
+
+        Duplicates (same type + subject) refresh the existing entry instead of
+        consuming an additional slot.
+        """
+        if self._memory_capacity <= 0:
+            return
+
+        key = event.identity_key()
+
+        # Dedup: refresh existing entry
+        for i, existing in enumerate(self._memories):
+            if existing.identity_key() == key:
+                self._memories[i] = event
+                return
+
+        if len(self._memories) < self._memory_capacity:
+            self._memories.append(event)
+        else:
+            # Evict lowest-priority event if new one beats it
+            min_idx = min(range(len(self._memories)), key=lambda i: self._memories[i].priority)
+            if event.priority > self._memories[min_idx].priority:
+                self._memories[min_idx] = event
+
+    def clear_memories_of_type(self, memory_type: MemoryType) -> None:
+        """Remove all memories of a given type (staleness / consumption)."""
+        self._memories = [e for e in self._memories if e.type != memory_type]
+
+    def has_memory(self, memory_type: MemoryType, subject: 'Entity' = None) -> bool:
+        """Check whether memory contains a matching memory."""
+        for e in self._memories:
+            if e.type == memory_type:
+                if subject is None or e.subject is subject:
+                    return True
+        return False
+
+    def highest_priority_memory(self) -> Optional[Memory]:
+        """Return the highest-priority memory, or None."""
+        if not self._memories:
+            return None
+        return max(self._memories, key=lambda e: e.priority)
+
+    def prune_stale_memories(self, current_day: int) -> None:
+        """Remove memories that have exceeded their staleness threshold."""
+        self._memories = [
+            e for e in self._memories
+            if e.type not in MEMORY_STALENESS
+            or (current_day - e.day) < MEMORY_STALENESS[e.type]
+        ]
+
+    # ------------------------------------------------------------------
+    # Information exchange
+    # ------------------------------------------------------------------
+
+    def exchange_memories(self, other: 'Thinking') -> None:
+        """Bidirectional memory exchange with *other*.
+
+        Each side receives memories it doesn't already have, subject to its own
+        capacity and priority eviction rules.
+        """
+        if not (self.is_talker and other.is_talker):
+            return
+
+        # Snapshot both sides before exchange to avoid feedback loops
+        my_memories = list(self._memories)
+        their_memories = list(other._memories)
+
+        for memory in their_memories:
+            self.add_memory(memory)
+        for memory in my_memories:
+            other.add_memory(memory)
+
+    def inherit_top_memory(self, source: 'Thinking') -> None:
+        """Copy the highest-priority memory from *source* into own memory.
+
+        Used by caravans when departing a settlement.
+        """
+        top = source.highest_priority_memory()
+        if top is not None:
+            self.add_memory(top)
+
+    # ------------------------------------------------------------------
+    # Written thought log (writers)
+    # ------------------------------------------------------------------
 
     def think(self, thought: str) -> None:
-        """Add a thought to the entity's thought history."""
+        """Append a rendered thought to the written thought log."""
         self.thoughts.append(thought)
-        # Keep only last N thoughts
-        if len(self.thoughts) > MAX_THOUGHTS:
-            self.thoughts.pop(0)
-    
-    def generate_thought(self) -> None:
-        """Generate a thought based on current state and intent."""
-        # Only think occasionally (based on game hours)
-
-        current_time = self.world.time.get_current_time()
-        total_hours = current_time.day * 24 + current_time.hour
-        if total_hours - self._last_thought_hour < self._next_thought_interval:
-            return
-        self._last_thought_hour = total_hours
-        self._next_thought_interval = random.randint(THOUGHT_INTERVAL_HOURS_MIN, THOUGHT_INTERVAL_HOURS_MAX)
-        
-        thought = None
-        
-        # Try action-based thought first (based on state)
-        from .mobile import Mobile
-        if isinstance(self, Mobile) and self.state in ACTION_THOUGHTS:
-            templates = ACTION_THOUGHTS[self.state]
-            thought = random.choice(templates)
-            # Format destination if available
-            if self.destination:
-                from .named import Named
-                dest_name = self.destination.name if isinstance(self.destination, Named) else str(self.destination)
-                thought = thought.format(destination=dest_name)
-        
-        # Try intent-based thought
-        elif self.intent != "idle":
-            for intent_key, templates in INTENT_THOUGHTS.items():
-                if intent_key in self.intent:
-                    thought = random.choice(templates)
-                    break
-        
-        # Fall back to idle thought
-        if thought is None:
-            thought = random.choice(IDLE_THOUGHTS)
-        
-        self.think(thought)

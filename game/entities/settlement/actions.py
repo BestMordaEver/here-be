@@ -2,6 +2,7 @@ from random import choice, random
 from typing import TYPE_CHECKING, Optional
 from game.entities.base.entity import EngagementType, Engagement, Entity
 from game.entities.base.scheduled import Scheduled, ScheduledAction, ActionType
+from game.entities.base.thinking import Memory, MemoryType
 from game.entities.spirit import SpiritType
 from game.entities.caravan import CaravanMission
 from game.entities.dragon.types import DragonType
@@ -79,6 +80,16 @@ def resolve_engagement(settlement: 'Settlement') -> None:
         if not has_protector or attacked_by_blade:
             if attacked_by_dragon:
                 settlement.days_since_attack = 0
+                # Emit ATTACKED_BY_DRAGON for the first attacking dragon
+                dragon = next((e for e in others if e.__class__.__name__ == 'Dragon' and e.is_alive), None)
+                if dragon:
+                    settlement.add_memory(Memory(
+                        type=MemoryType.ATTACKED_BY_DRAGON,
+                        subject=dragon,
+                        location=settlement.coordinates,
+                        day=settlement.world.time.current_day,
+                        source=settlement,
+                    ))
                 if attacked_by_brute:
                     if settlement.__class__.__name__ == 'Camp':
                         settlement.die("destroyed by brute dragon")
@@ -92,6 +103,13 @@ def resolve_engagement(settlement: 'Settlement') -> None:
                     settlement.hurt(1, "dragon attack")
 
             elif attacked_by_bandit:
+                settlement.add_memory(Memory(
+                    type=MemoryType.ATTACKED_BY_BANDIT,
+                    subject=next((e for e in others if e.__class__.__name__ == 'Bandit'), None),
+                    location=settlement.coordinates,
+                    day=settlement.world.time.current_day,
+                    source=settlement,
+                ))
                 settlement.hurt(1, "bandit raid")
 
     settlement.complete_current_action()

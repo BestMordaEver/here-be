@@ -8,8 +8,6 @@ The lifecycle:
     2. During the hour, entities can disengage() (flee, interrupt)
     3. At the end of the hour, resolve_engagement() is called — subclasses override for outcomes
 """
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, List, Optional, Set, TYPE_CHECKING
@@ -47,9 +45,9 @@ class Engagement:
     - Once all entity references are cleared, Python GC cleans up the engagement
     """
     engagement_type: EngagementType
-    started_by: Engaging              # Who initiated the engagement
+    started_by: "Engaging"              # Who initiated the engagement
     started_hour: int                 # Hour when engagement began
-    participants: Set[Engaging] = field(default_factory=set)
+    participants: Set["Engaging"] = field(default_factory=set)
     location: Any = None              # Optional location (for pillaging ruins, etc.)
 
     def __post_init__(self) -> None:
@@ -72,11 +70,11 @@ class Engagement:
             location_str = f" at {loc_name}"
         return f"{self.engagement_type.value} [{', '.join(participant_names)}]{location_str} (started {self.started_hour}:00)"
 
-    def __contains__(self, entity: Engaging) -> bool:
+    def __contains__(self, entity: "Engaging") -> bool:
         """Check if an entity is part of this engagement. Enables 'entity in engagement' syntax."""
         return entity in self.participants
 
-    def add_participant(self, entity: Engaging) -> bool:
+    def add_participant(self, entity: "Engaging") -> bool:
         """
         Add a participant to the engagement.
 
@@ -88,7 +86,7 @@ class Engagement:
         self.participants.add(entity)
         return True
 
-    def remove_participant(self, entity: Engaging) -> bool:
+    def remove_participant(self, entity: "Engaging") -> bool:
         """
         Remove a participant from the engagement.
 
@@ -108,7 +106,7 @@ class Engagement:
         """Check if engagement has no participants left."""
         return len(self.participants) == 0
 
-    def get_others(self, entity: Engaging) -> List[Engaging]:
+    def get_others(self, entity: "Engaging") -> List["Engaging"]:
         """Get all participants except the given entity."""
         return [p for p in self.participants if p is not entity]
 
@@ -238,7 +236,7 @@ class Engaging:
         """Check if currently in an engagement."""
         return self.current_engagement is not None
 
-    def is_engaged_with(self, entity: Engaging) -> bool:
+    def is_engaged_with(self, entity: "Engaging") -> bool:
         """Check if currently engaged with a specific entity."""
         if not self.current_engagement:
             return False

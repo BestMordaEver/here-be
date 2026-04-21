@@ -87,6 +87,9 @@ class Village(Settlement, Expansion, Ruins):
         
     def on_dawn(self) -> None:
         """Handle dawn event - build schedule and try to get blessing."""
+        self.subsidiary_camps = [c for c in self.subsidiary_camps if c.is_alive]
+        self.prune_stale_memories(self.world.time.current_day)
+
         if self.process_ruins():
             return
         

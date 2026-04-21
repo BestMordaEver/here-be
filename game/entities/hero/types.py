@@ -21,3 +21,12 @@ MAX_BLESSINGS = 3           # Max blessings hero can carry
 PARTY_SIZE = 4              # Heroes needed for dragon raid
 TIRED_AFTER_DAYS = 48       # Hero becomes permanently tired
 TIRED_THRESHOLD = 3         # Consecutive non-tired days before becoming tired
+
+# Placeholder name pool
+HERO_NAMES = [
+    "Aldric", "Brenna", "Cedric", "Dara", "Edric",
+    "Fiona", "Gareth", "Hilde", "Isolde", "Jorin",
+    "Kael", "Lira", "Maren", "Niall", "Orin",
+    "Petra", "Rowan", "Sable", "Theron", "Una",
+    "Voss", "Wren", "Yara", "Zephyr",
+]

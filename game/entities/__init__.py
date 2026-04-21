@@ -1,4 +1,9 @@
-from .base import Entity, Coordinates, Mobile, Named, Thinking, Scheduled, ScheduledAction, ActionType
+from .base import (
+	Entity, Coordinates, Mobile,
+	Named, Pronouns, Thinking, MemoryType, Memory,
+	Scheduled, ScheduledAction, ActionType
+)
+
 from .settlement.types import SettlementEvent
 from .dragon import Dragon
 from .caravan import Caravan, CaravanMission

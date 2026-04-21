@@ -78,6 +78,8 @@ class Camp(Settlement, Extractor):
 
         if self.home and not self.home.is_alive:
             self.home = None
+        self.prune_stale_memories(self.world.time.current_day)
+
         # Send blessing to parent settlement if we have one
         if self.has_blessings and self.home and self.home.is_alive:
             from ..caravan import Caravan, CaravanMission

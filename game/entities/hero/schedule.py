@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 from random import random
 
 from game.entities.base.scheduled import ActionType
+from game.entities.base.thinking import MemoryType
 from .types import (
     HeroMood, TIRED_AFTER_DAYS, TIRED_THRESHOLD, PARTY_SIZE,
 )
@@ -31,10 +32,11 @@ def determine_mood(hero: 'Hero') -> HeroMood:
     if hero.party and len(hero.party) >= PARTY_SIZE:
         return HeroMood.FOREBODING
 
-    # Vengeful if a friend died recently
-    if hero.dead_friend:
-        hero.dead_friend = None  # Clear after one day of vengeance
-        return HeroMood.VENGEFUL
+    # Vengeful if we received news of an acquaintance's death
+    for event in hero.memories:
+        if event.type == MemoryType.SAW_HERO_DIE and event.subject in hero.acquaintances:
+            hero.clear_memories_of_type(MemoryType.SAW_HERO_DIE)
+            return HeroMood.VENGEFUL
 
     # Opportunistic if we spotted ruins/treasury, or domain known for 10+ days
     if hero.opportunistic_target and hero.opportunistic_target.is_alive:

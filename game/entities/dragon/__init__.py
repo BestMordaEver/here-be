@@ -1,33 +1,13 @@
 """Dragon entity with mood-based daily scheduling."""
 
 from typing import TYPE_CHECKING, Dict, Any, List
-from dataclasses import dataclass
 
 from .types import DragonMood, DragonType, DomainType, DragonAlignment, DragonDiet
 from game.entities.base import Coordinates, Mobile, Named, Aging, Thinking, Scheduled, Visible
+from game.entities.base.named import Pronouns
 
 if TYPE_CHECKING:
     from game.world import World
-
-@dataclass
-class DragonPronouns:
-    """Pronoun set for a dragon."""
-    subject: str = "it"      # he/she/they/it
-    object: str = "it"       # him/her/them/it  
-    possessive: str = "its"  # his/her/their/its
-    
-    @classmethod
-    def from_string(cls, pronoun_str: str) -> 'DragonPronouns':
-        """Parse pronouns from string like 'he/him/his'."""
-        if not pronoun_str:
-            return cls()
-        parts = pronoun_str.split('/')
-        if len(parts) >= 3:
-            return cls(parts[0], parts[1], parts[2])
-        return cls()
-
-    def __repr__(self):
-        return f"{self.subject}/{self.object}/{self.possessive}"
 
 
 # Dragon constants
@@ -49,10 +29,10 @@ class Dragon(Mobile, Visible, Named, Thinking, Scheduled, Aging):
         # Initialize base classes
         Mobile.__init__(self, world, coordinates, loiter=0)  # Dragons move every cycle
         Visible.__init__(self)
-        Named.__init__(self, name)
+        Named.__init__(self, name, Pronouns.from_string(pronouns))
         Thinking.__init__(self)
         Scheduled.__init__(self)
-        Aging.__init__(self)
+        Aging.__init__(self, lifespan=LIFESPAN_BASE_DAYS)  # Base lifespan, modified by spires
 
         # Determine dragon type from properties
         if 'serpent' in properties:
@@ -116,9 +96,6 @@ class Dragon(Mobile, Visible, Named, Thinking, Scheduled, Aging):
         # Rotation
         self.base_rotation = base_rotation
         self.rotation = base_rotation
-        
-        # Pronouns
-        self.pronouns = DragonPronouns.from_string(pronouns)
         
         self.move_error = 0.0  # For Bresenham-style movement
         

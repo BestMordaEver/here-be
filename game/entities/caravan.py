@@ -39,7 +39,7 @@ class Caravan(Mobile, Thinking, Scheduled, Pockets):
         target_spirit: 'Spirit' = None,  # For settle_camp mission
     ):
         Mobile.__init__(self, world, "#2b1c00", '@', coordinates, loiter=4)  # Caravans skip 4 cycles
-        Thinking.__init__(self, intent=mission.value)
+        Thinking.__init__(self)
         Scheduled.__init__(self)
         Pockets.__init__(self, max_blessings=1)
         
@@ -83,6 +83,10 @@ class Caravan(Mobile, Thinking, Scheduled, Pockets):
         # They just continue their mission
         self.schedule = []
         self.current_action = None
+        self.fleeing_from = None
+
+        if self.home and not self.home.is_alive:
+            self.home = None
         
         # Resume movement if needed
         if self.destination and self.state != "moving":
@@ -111,6 +115,10 @@ class Caravan(Mobile, Thinking, Scheduled, Pockets):
     
     def on_arrival(self) -> None:
         """Handle arrival at destination."""
+        # Exchange events with destination settlement
+        if not isinstance(self.destination, tuple) and hasattr(self.destination, 'is_talker') and self.destination.is_talker:
+            self.exchange_memories(self.destination)
+
         if self.mission == CaravanMission.TRADE:
             if self.returning:
                 self.think("Home at last.")
@@ -183,11 +191,24 @@ class Caravan(Mobile, Thinking, Scheduled, Pockets):
     
     def check_for_encounters(self) -> Optional[Mobile]:
         """Check for threats. Caravans are passive - they notice but don't initiate."""
+        # Exchange events with nearby talkers
+        for entity in self.get_nearby_entities(FEAR_RADIUS):
+            if hasattr(entity, 'is_talker') and entity.is_talker:
+                self.exchange_memories(entity)
+
         nearby = self.get_nearby_entities(FEAR_RADIUS)
         
         for entity in nearby:
             # Only flee from dragons, bandits will engage us
             if entity.__class__.__name__ == 'Dragon' and entity.is_alive:
+                from game.entities.base.thinking import Memory, MemoryType
+                self.add_memory(Memory(
+                    type=MemoryType.SAW_DRAGON,
+                    subject=entity,
+                    location=entity.coordinates,
+                    day=self.world.time.current_day,
+                    source=self,
+                ))
                 return entity
         
         return None

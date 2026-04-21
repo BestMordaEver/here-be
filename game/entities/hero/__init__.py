@@ -1,17 +1,19 @@
 """Hero entity with mood-based daily scheduling."""
 
+import random
 from typing import TYPE_CHECKING, Dict, Any, List, Optional, Set
 
-from game.entities.base import Coordinates, Mobile, Thinking, Scheduled, Aging, Visible, Pockets
+from game.entities.base import Coordinates, Mobile, Named, Thinking, Scheduled, Aging, Visible, Pockets
+from game.entities.base.named import Pronouns
 from game.world.types import Biome
-from .types import HeroMood, LIFESPAN_DAYS, PARTY_SIZE, MAX_BLESSINGS, PATROL_RANGE
+from .types import HeroMood, LIFESPAN_DAYS, PARTY_SIZE, MAX_BLESSINGS, PATROL_RANGE, HERO_NAMES
 
 if TYPE_CHECKING:
     from game.world import World
     from game.entities.settlement.settlement import Settlement
 
 
-class Hero(Mobile, Visible, Thinking, Scheduled, Aging, Pockets):
+class Hero(Mobile, Visible, Named, Thinking, Scheduled, Aging, Pockets):
     """A hero that protects settlements and slays dragons."""
 
     def __init__(
@@ -26,6 +28,7 @@ class Hero(Mobile, Visible, Thinking, Scheduled, Aging, Pockets):
 
         Mobile.__init__(self, world, coordinates, loiter=1)  # Heroes skip 1 movement cycle
         Visible.__init__(self)
+        Named.__init__(self, random.choice(HERO_NAMES), Pronouns.random())
         Thinking.__init__(self)
         Scheduled.__init__(self)
         Aging.__init__(self, lifespan=LIFESPAN_DAYS)
@@ -54,7 +57,6 @@ class Hero(Mobile, Visible, Thinking, Scheduled, Aging, Pockets):
         self.known_domains: Set = set()               # Domain coordinates
         self.acquaintances: Set['Hero'] = set()        # Heroes we know
         self.days_domain_known: Dict = {}              # coords -> days since learned
-        self.dead_friend: Optional['Hero'] = None      # Triggers vengeful
         self.opportunistic_target: Optional[Any] = None  # Triggers opportunistic
 
     # ------------------------------------------------------------------
@@ -75,8 +77,22 @@ class Hero(Mobile, Visible, Thinking, Scheduled, Aging, Pockets):
     # Lifecycle
     # ------------------------------------------------------------------
 
+    def prune_dead_refs(self) -> None:
+        """Remove references to dead entities so they can be garbage collected."""
+        if self.party_leader and not self.party_leader.is_alive:
+            self.party_leader = None
+        if self.party:
+            self.party[:] = [h for h in self.party if h.is_alive]
+            if len(self.party) <= 1:
+                self.party = None
+                self.party_leader = None
+        if self.opportunistic_target and not self.opportunistic_target.is_alive:
+            self.opportunistic_target = None
+
     def on_dawn(self) -> None:
         """Dawn: age, check death, build schedule."""
+        self.prune_dead_refs()
+        self.prune_stale_memories(self.world.time.current_day)
         if self.process_aging():
             return
         self.build_schedule()
@@ -98,10 +114,18 @@ class Hero(Mobile, Visible, Thinking, Scheduled, Aging, Pockets):
 
         super().die(reason)
 
-        # Notify acquaintances so they become vengeful
-        for friend in self.acquaintances:
-            if friend.is_alive:
-                friend.dead_friend = self
+        # Broadcast SAW_HERO_DIE event to nearby talkers and home settlement
+        from game.entities.base.thinking import Memory, MemoryType
+        event = Memory(
+            type=MemoryType.SAW_HERO_DIE,
+            subject=self,
+            location=self.coordinates,
+            day=self.world.time.current_day,
+            source=self,
+        )
+        for entity in self.get_nearby_entities(10):
+            if hasattr(entity, 'is_talker') and entity.is_talker:
+                entity.add_event(event)
 
         # Leave party
         if self.party:
@@ -117,6 +141,7 @@ class Hero(Mobile, Visible, Thinking, Scheduled, Aging, Pockets):
         return {
             "coordinates": self.coordinates,
             "in_transit": self.in_transit,
+            "name": self.name,
             "color": self.color,
             "character": self.char,
             "home": self.home.name if self.home else "none",
