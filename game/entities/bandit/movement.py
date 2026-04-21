@@ -20,7 +20,7 @@ def _try_pickup_blessings(bandit: 'Bandit') -> None:
     """Pick up dropped blessings at current location."""
     from game.entities.blessing import Blessing
 
-    for entity in bandit.world.entities:
+    for entity in list(bandit.world.entities):
         if isinstance(entity, Blessing) and entity.coordinates == bandit.coordinates:
             can_take = MAX_BLESSINGS - bandit.blessings
             taken = entity.take(can_take)

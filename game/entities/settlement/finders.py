@@ -11,7 +11,7 @@ def find_trade_target(settlement : 'Settlement') -> Optional[Any]:
     from .settlement import Settlement
     
     candidates = []
-    for entity in settlement.world.entities:
+    for entity in list(settlement.world.entities):
         if isinstance(entity, Settlement) and entity.is_alive and entity != settlement:
             distance = settlement.get_distance(entity.coordinates)
             if distance <= 50:  # Max trade range

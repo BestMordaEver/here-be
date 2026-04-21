@@ -63,7 +63,7 @@ class Expansion:
 
         best_spirit = None
         best_distance = float('inf')
-        for entity in self.world.entities:
+        for entity in list(self.world.entities):
             if entity.__class__.__name__ != 'Spirit' or not entity.is_alive:
                 continue
             if entity.type not in priority_types:
@@ -137,7 +137,7 @@ class Expansion:
         for camp in self.subsidiary_camps:
             if camp.__class__.__name__ == 'Camp':
                 distance = float('inf')
-                for e in self.world.entities:
+                for e in list(self.world.entities):
                     if e.__class__.__name__ in ('City', 'Village') and e.is_alive and e != self:
                         if camp.get_distance(e.coordinates) < distance:
                             distance = camp.get_distance(e.coordinates)

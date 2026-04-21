@@ -6,7 +6,7 @@ from game.world.types import Biome
 
 if TYPE_CHECKING:
 	from . import World
-	from game.entities.settlement.city import City
+	from game.entities.settlement import Settlement
 
 
 # Spirit generation constants
@@ -213,7 +213,7 @@ def check_settlement_distance(world: 'World', x: int, y: int, min_distance: int 
 	Returns True if far enough from all settlements, False otherwise.
 	"""
 	from game.entities.settlement.settlement import Settlement
-	for entity in world.entities:
+	for entity in list(world.entities):
 		if issubclass(entity.__class__, Settlement):
 			if entity.get_distance((x,y)) < min_distance:
 				return False
@@ -291,7 +291,7 @@ def attempt_spawn_cattle(world: 'World') -> bool:
 	from game.entities import Cattle
 	
 	# Count existing cattle
-	cattle_count = sum(1 for e in world.entities if e.__class__.__name__ == 'Cattle')
+	cattle_count = sum(1 for e in list(world.entities) if e.__class__.__name__ == 'Cattle')
 	if cattle_count >= CATTLE_MAX_COUNT:
 		return False
 	

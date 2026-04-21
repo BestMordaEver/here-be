@@ -92,7 +92,7 @@ class World:
         """Get all entities at a specific coordinate."""
         from game.entities.settlement.settlement import Settlement as _Settlement
         result = []
-        for e in self.entities:
+        for e in list(self.entities):
             if isinstance(e, _Settlement):
                 if e.occupies(coordinates):
                     result.append(e)
@@ -113,7 +113,7 @@ class World:
         """
         result = []
         cx, cy = coordinates
-        for e in self.entities:
+        for e in list(self.entities):
             if exclude is not None and e is exclude:
                 continue
             if alive_only and not e.is_alive:
@@ -154,7 +154,7 @@ class World:
                         attempt_spawn_settlement(self, 'village')
                 
                 # Spawn cattle once per day, with world cap of 20
-                cattle_count = sum(1 for e in self.entities if e.__class__.__name__ == 'Cattle' and e.is_alive)
+                cattle_count = sum(1 for e in list(self.entities) if e.__class__.__name__ == 'Cattle' and e.is_alive)
                 if cattle_count < 20:
                     attempt_spawn_cattle(self)
             
@@ -178,7 +178,7 @@ class World:
 
              # Get all scheduled entities that are currently moving
             moving_entities: List[Entity] = [
-                e for e in self.entities 
+                e for e in list(self.entities) 
                 if isinstance(e, Scheduled) and e.current_action is not None
             ]
             

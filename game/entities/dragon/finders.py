@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 def find_human_target(dragon: 'Dragon') -> Optional['Hero | Bandit | Caravan']:
 	"""Find a human entity to attack."""
 	humans = []
-	for entity in dragon.world.entities:
+	for entity in list(dragon.world.entities):
 		if entity.__class__.__name__ in ('Hero', 'Bandit', 'Caravan'):
 			if entity.is_alive:
 				humans.append(entity)
@@ -23,7 +23,7 @@ def find_human_target(dragon: 'Dragon') -> Optional['Hero | Bandit | Caravan']:
 def find_settlement_target(dragon: 'Dragon') -> Optional['Settlement']:
 	"""Find a settlement to attack."""
 	settlements = []
-	for entity in dragon.world.entities:
+	for entity in list(dragon.world.entities):
 		if entity.__class__.__name__ in ('Village', 'City', 'Camp'):
 			if entity.is_alive:
 				settlements.append(entity)
@@ -53,7 +53,7 @@ def find_spirits(
 		return []
 	
 	spirits = []
-	for entity in dragon.world.entities:
+	for entity in list(dragon.world.entities):
 		if entity.__class__.__name__ == 'Spirit' and entity.is_alive and not entity.current_engagement:
 			if spirit_types and entity.spirit_type not in spirit_types:
 				continue

@@ -15,7 +15,7 @@ def get_world():
     
     # Serialize all entities
     serialized_entities = []
-    for entity in world.entities:
+    for entity in list(world.entities):
         data = entity.get_visual()
         
         # For Domain entities, populate scorched terrain overlay

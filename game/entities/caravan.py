@@ -165,7 +165,7 @@ class Caravan(Mobile, Thinking, Scheduled, Pockets):
         closest: Optional[Settlement] = None
         closest_distance = float('inf')
         
-        for entity in self.world.entities:
+        for entity in list(self.world.entities):
             if isinstance(entity, Settlement) and entity.is_alive:
                 distance = self.get_distance(entity.coordinates)
                 if distance < closest_distance:

@@ -21,7 +21,7 @@ def find_pillage_target(bandit: 'Bandit') -> Optional[Any]:
     from game.entities.settlement.settlement import Settlement
     targets = []
 
-    for entity in bandit.world.entities:
+    for entity in list(bandit.world.entities):
         # Treasury (dead dragon domain with treasure)
         if isinstance(entity, Domain) and entity.is_treasury and entity.treasure > 0:
             targets.append(entity)

@@ -94,7 +94,7 @@ def build_schedule(hero: 'Hero') -> None:
             from game.entities.settlement.settlement import Settlement
             closest_market = None
             closest_dist = float('inf')
-            for entity in hero.world.entities:
+            for entity in list(hero.world.entities):
                 if isinstance(entity, Settlement) and entity.is_alive:
                     if entity.__class__.__name__ in ('Village', 'City'):
                         if entity.current_event is not None and entity.current_event.value == 'market_day':
@@ -123,7 +123,7 @@ def build_schedule(hero: 'Hero') -> None:
         else:
             from game.entities.dragon.domain import Domain
             unguarded = None
-            for entity in hero.world.entities:
+            for entity in list(hero.world.entities):
                 if isinstance(entity, Domain) and entity.is_alive:
                     if entity.owner:
                         dragon = entity.owner
@@ -156,7 +156,7 @@ def build_schedule(hero: 'Hero') -> None:
         else:
             known_domain = None
             for domain_coords in hero.known_domains:
-                for entity in hero.world.entities:
+                for entity in list(hero.world.entities):
                     if entity.__class__.__name__ == 'Domain' and entity.is_alive:
                         if entity.coordinates == domain_coords:
                             known_domain = entity

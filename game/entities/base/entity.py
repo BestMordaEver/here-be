@@ -68,6 +68,7 @@ class Entity(Engaging):
         """Handle entity death."""
         self.is_dead = True
         self.is_alive = False
+        self.world.remove_entity(self)
     
     def serialize(self) -> Dict[str, Any]:
         """Serialize entity to dictionary for JSON output."""

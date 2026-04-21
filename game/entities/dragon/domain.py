@@ -79,7 +79,7 @@ class Domain(Entity, Visible, Pockets):
         
         # Get existing lair locations
         lair_coords = []
-        for entity in world.entities:
+        for entity in list(world.entities):
             if entity.__class__.__name__ == 'Domain' and entity.is_alive:
                 lair_coords.append(entity.coordinates)
         
@@ -159,7 +159,7 @@ class Domain(Entity, Visible, Pockets):
     
     def can_be_pillaged(self) -> bool:
         """Check if domain can be pillaged (dragon dead or far away)."""
-        if not self.dragon.is_alive:
+        if not self.dragon or not self.dragon.is_alive:
             return True
         
         # Check if dragon is far enough away (>15 tiles)
@@ -181,9 +181,10 @@ class Domain(Entity, Visible, Pockets):
             return
         
         # If dragon is dead, domain becomes a pillage-able treasury
-        if not self.dragon.is_alive:
+        if self.dragon and not self.dragon.is_alive:
             self.is_treasury = True
             self.visual_state = "treasury"
+            self.dragon = None
     
     def get_visual(self):
         data = super().get_visual()

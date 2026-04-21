@@ -10,7 +10,7 @@ def find_remote_settlements(hero: 'Hero', count: int = 2) -> List['Settlement']:
     """Find distant settlements to visit, prioritizing market days."""
     from game.entities.settlement.settlement import Settlement
     settlements = []
-    for entity in hero.world.entities:
+    for entity in list(hero.world.entities):
         if isinstance(entity, Settlement) and entity.is_alive:
             if entity.__class__.__name__ in ('Village', 'City'):
                 dist = hero.get_distance(entity.coordinates)
@@ -30,7 +30,7 @@ def find_pillage_target(hero: 'Hero') -> Optional[Any]:
     """Find ruins or treasury to pillage."""
     from game.entities.dragon.domain import Domain
     from game.entities.settlement.settlement import Settlement
-    for entity in hero.world.entities:
+    for entity in list(hero.world.entities):
         # Dragon treasury
         if isinstance(entity, Domain) and entity.is_treasury and entity.treasure > 0:
             return entity

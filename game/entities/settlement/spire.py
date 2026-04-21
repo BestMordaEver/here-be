@@ -33,6 +33,9 @@ class Spire(Entity, Aging, Ruins, Visible):
     
     def on_dawn(self) -> None:
         """Handle dawn - age the spire and check for natural death or ruin cleanup."""
+        if self.city and not self.city.is_alive:
+            self.city = None
+
         if self.process_ruins():
             return
         

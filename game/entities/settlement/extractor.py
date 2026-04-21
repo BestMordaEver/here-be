@@ -21,7 +21,7 @@ class Extractor:
         self.extraction_types = types  # Types of spirits this settlement can extract from
         
         self.nearby_spirits = []
-        for entity in self.world.entities:
+        for entity in list(self.world.entities):
             if entity.__class__.__name__ == 'Spirit' and entity.type in self.extraction_types:
                 distance = self.get_distance(entity.coordinates)
                 if ((entity.type == SpiritType.FOREST and distance <= WOOD_EXTRACTION_RANGE) or

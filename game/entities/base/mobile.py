@@ -157,8 +157,10 @@ class Mobile(Entity):
             return
         
         # If tracking an entity, update destination if it moved
-        if self.target_entity and self.target_entity.coordinates:
-            if self.target_entity.coordinates != self.destination:
+        if self.target_entity:
+            if not self.target_entity.is_alive:
+                self.target_entity = None
+            elif self.target_entity.coordinates != self.destination:
                 self.destination = self.target_entity.coordinates
                 # Recalculate path if target moved significantly
                 if self.get_distance(self.destination) > 2:

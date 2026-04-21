@@ -19,7 +19,7 @@ def _try_pickup_blessings(hero: 'Hero') -> None:
     """Pick up dropped blessings at the hero's current location."""
     from game.entities.blessing import Blessing
 
-    for entity in hero.world.entities:
+    for entity in list(hero.world.entities):
         if isinstance(entity, Blessing) and entity.coordinates == hero.coordinates:
             can_take = hero.available_space()
             taken = entity.take(can_take)

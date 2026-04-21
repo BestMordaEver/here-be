@@ -49,7 +49,7 @@ class Bandit(Mobile, Visible, Thinking, Scheduled, Aging, Pockets):
             return False
 
         # Can't move through settlements
-        for entity in self.world.entities:
+        for entity in list(self.world.entities):
             if isinstance(entity, Settlement) and entity.occupies(coordinates):
                 return False
 

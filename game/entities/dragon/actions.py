@@ -113,7 +113,7 @@ def start_action(dragon: 'Dragon', action: ScheduledAction) -> None:
             
     elif action.action_type == ActionType.ATTACK and dragon.mood == DragonMood.COVETOUS:
         from game.entities.settlement.settlement import Settlement
-        blessed = [e for e in dragon.world.entities
+        blessed = [e for e in list(dragon.world.entities)
                    if isinstance(e, Settlement) and e.__class__.__name__ in ('Village', 'City', 'Camp')
                    and e.is_alive and e.has_blessings]
         target = choice(blessed) if blessed else finders.find_settlement_target(dragon)

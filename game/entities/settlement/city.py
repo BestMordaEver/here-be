@@ -150,7 +150,7 @@ class City(Settlement, Expansion, Named, Ruins, Visible):
         if self.spire and self.spire.is_alive and self.has_blessings and self.blessings > 1:
             # Find cities without spires in range
             target_cities = []
-            for entity in self.world.entities:
+            for entity in list(self.world.entities):
                 if entity.__class__.__name__ == 'City' and entity != self and entity.is_alive:
                     if entity.spire is None or not entity.spire.is_alive:
                         distance = self.get_distance(entity.coordinates)

@@ -148,7 +148,7 @@ class Dragon(Mobile, Visible, Named, Thinking, Scheduled, Aging):
         
     def get_lifespan(self) -> int:
         """Calculate lifespan based on active spires."""
-        spire_count = sum(1 for e in self.world.entities 
+        spire_count = sum(1 for e in list(self.world.entities) 
                          if e.__class__.__name__ == 'Spire' and e.is_alive)
         return LIFESPAN_BASE_DAYS + (LIFESPAN_PER_SPIRE * spire_count)
     
