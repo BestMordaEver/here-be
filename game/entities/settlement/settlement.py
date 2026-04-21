@@ -1,7 +1,6 @@
 """Base settlement class for all settlement types."""
 from ..base.named import Named
 from ..base.entity import Entity, Coordinates
-from ..base.thinking import Thinking
 from ..base.scheduled import Scheduled
 from ..base.visible import Visible
 from ..base.pockets import Pockets
@@ -13,7 +12,7 @@ if TYPE_CHECKING:
     from game.entities import Caravan
 
 
-class Settlement(Entity, Named, Thinking, Scheduled, Visible, Pockets):
+class Settlement(Entity, Named, Scheduled, Visible, Pockets):
     """Base class for all settlement types. Includes health/life management."""
     
     def __init__(
@@ -25,7 +24,6 @@ class Settlement(Entity, Named, Thinking, Scheduled, Visible, Pockets):
     ):
         Entity.__init__(self, world, coordinates)
         Named.__init__(self, name)
-        Thinking.__init__(self)
         Scheduled.__init__(self)
         Visible.__init__(self)
         Pockets.__init__(self, max_blessings=-1)

@@ -55,19 +55,6 @@ class Memory:
         return (self.type, id(self.subject))
 
 
-# ---------------------------------------------------------------------------
-# Memory capacities per entity kind
-# ---------------------------------------------------------------------------
-
-MEMORY_CAPACITY = {
-    'Caravan': 1,
-    'Hero': 3,
-    'Village': 3,
-    'City': 5,
-    'Camp': 2,
-}
-DEFAULT_MEMORY_CAPACITY = 0  # Non-talkers have no memory
-
 # Days after which a memory type expires and is automatically pruned.
 # Types not listed here never expire.
 MEMORY_STALENESS: dict[MemoryType, int] = {
@@ -88,7 +75,7 @@ MEMORY_STALENESS: dict[MemoryType, int] = {
 class Thinking:
     """Mixin providing memory transport (talkers) and a written thought log (writers)."""
 
-    def __init__(self, capacity: int = DEFAULT_MEMORY_CAPACITY):
+    def __init__(self, capacity: int = 0):
         # Memory — bounded priority queue
         self._memory_capacity: int = capacity
         self._memories: List[Memory] = []

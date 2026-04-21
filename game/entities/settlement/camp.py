@@ -1,5 +1,5 @@
 """Worker camp settlement."""
-from game.entities.base import Coordinates, Visible
+from game.entities.base import Coordinates, Visible, Thinking
 from .settlement import Settlement
 from typing import List, Tuple, TYPE_CHECKING
 
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from game.world import World
     from game.entities.spirit import Spirit
 
-class Camp(Settlement, Extractor):
+class Camp(Settlement, Thinking, Extractor):
     """2x2 worker camp made of brown tents."""
     
     def __init__(
@@ -23,6 +23,7 @@ class Camp(Settlement, Extractor):
             home: 'Settlement'
         ):
         super().__init__(world, name, coordinates, life=2)
+        Thinking.__init__(self, capacity=2)
         Extractor.__init__(self, SpiritType.FOREST, SpiritType.MOUNTAIN, SpiritType.LAKE)
         
         self.target_spirit = target_spirit

@@ -1,6 +1,6 @@
 """Village settlement."""
 from typing import List, Tuple, TYPE_CHECKING
-from game.entities.base import Coordinates, Named
+from game.entities.base import Coordinates, Named, Thinking
 from game.entities.spirit import SpiritType
 from .settlement import Settlement
 from .ruins import Ruins
@@ -21,13 +21,14 @@ RUINS_DURATION_DAYS = 50
 STARTING_LIFE = 3  # Village starting HP
 
 
-class Village(Settlement, Expansion, Ruins):
+class Village(Settlement, Thinking, Extractor, Expansion, Ruins):
     """3x3 village with fields, homes, and city square."""
     
     def __init__(self, world: 'World', name: str, coordinates: Coordinates):
         super().__init__(world, name, coordinates, life=STARTING_LIFE)
         Ruins.__init__(self, ruins_duration=RUINS_DURATION_DAYS)
         Extractor.__init__(self, SpiritType.LAKE)
+        Thinking.__init__(self, capacity=3)
 
         self.create_large("default", [
             ((-1,-1), "#", "#FFD700"),      # Top left field (yellow)

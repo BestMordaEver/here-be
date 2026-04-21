@@ -39,7 +39,7 @@ class Caravan(Mobile, Thinking, Scheduled, Pockets):
         target_spirit: 'Spirit' = None,  # For settle_camp mission
     ):
         Mobile.__init__(self, world, "#2b1c00", '@', coordinates, loiter=4)  # Caravans skip 4 cycles
-        Thinking.__init__(self)
+        Thinking.__init__(self, capacity=1)
         Scheduled.__init__(self)
         Pockets.__init__(self, max_blessings=1)
         

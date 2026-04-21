@@ -29,7 +29,7 @@ class Hero(Mobile, Visible, Named, Thinking, Scheduled, Aging, Pockets):
         Mobile.__init__(self, world, coordinates, loiter=1)  # Heroes skip 1 movement cycle
         Visible.__init__(self)
         Named.__init__(self, random.choice(HERO_NAMES), Pronouns.random())
-        Thinking.__init__(self)
+        Thinking.__init__(self, capacity=3)
         Scheduled.__init__(self)
         Aging.__init__(self, lifespan=LIFESPAN_DAYS)
         Pockets.__init__(self, max_blessings=MAX_BLESSINGS)

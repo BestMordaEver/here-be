@@ -1,6 +1,6 @@
 """City settlement."""
 from typing import List, Tuple, TYPE_CHECKING
-from game.entities.base import Coordinates, Named, Visible
+from game.entities.base import Coordinates, Thinking
 from game.entities.spirit import SpiritType
 from game.world.types import Biome
 from .settlement import Settlement
@@ -21,12 +21,13 @@ SPIRE_BLESSING_COST = 10  # Blessings needed to spawn spire
 BLESSING_SELL_RANGE = 100  # Max distance to sell blessings to other cities
 
 
-class City(Settlement, Expansion, Named, Ruins, Visible):
+class City(Settlement, Thinking, Expansion, Ruins):
     """5x5 city with walls, gates, buildings, and roads."""
     
     
     def __init__(self, world: 'World', name: str, coordinates: Coordinates):
         super().__init__(world, name, coordinates, life=STARTING_LIFE)
+        Thinking.__init__(self, capacity=5)
         Ruins.__init__(self, ruins_duration=RUINS_DURATION_DAYS)
 
         self.create_large("default", [
