@@ -117,6 +117,39 @@ class Domain(Entity, Visible, Pockets):
             # Scorched domains have a dark background
             self.background_color = "#1a0808"  # Dark red
     
+    def occupies(self, coordinates: Coordinates) -> bool:
+        """Check if domain occupies the given coordinates."""
+        return self.coordinates == coordinates
+    
+    def can_be_pillaged(self) -> bool:
+        """Check if domain can be pillaged (dragon dead or far away)."""
+        if not self.dragon or not self.dragon.is_alive:
+            return True
+        
+        # Check if dragon is far enough away (>15 tiles)
+        distance = self.dragon.get_distance(self.coordinates)
+        return distance > 15
+    
+    def pillage(self, amount: int = 3) -> int:
+        """Pillage the domain, removing scorched earth and returning treasure.
+        Returns amount of treasure gained.
+        """
+        taken = min(amount, self.blessings)
+        if self.blessings == taken:
+            self.die("pillaged")
+        return taken
+    
+    def update(self) -> None:
+        """Update domain state."""
+        if self.is_dead:
+            return
+        
+        # If dragon is dead, domain becomes a pillage-able treasury
+        if self.dragon and not self.dragon.is_alive:
+            self.is_treasury = True
+            self.visual_state = "treasury"
+            self.dragon = None
+    
     def get_scorched_terrain_overlay(self) -> Dict[Coordinates, Tuple[str, str]]:
         """Get terrain overlays for scorched tiles.
         Returns dict mapping coordinates to (symbol, color) for terrain changes.
@@ -153,55 +186,23 @@ class Domain(Entity, Visible, Pockets):
         
         return overlays
     
-    def occupies(self, coordinates: Coordinates) -> bool:
-        """Check if domain occupies the given coordinates."""
-        return self.coordinates == coordinates
-    
-    def can_be_pillaged(self) -> bool:
-        """Check if domain can be pillaged (dragon dead or far away)."""
-        if not self.dragon or not self.dragon.is_alive:
-            return True
-        
-        # Check if dragon is far enough away (>15 tiles)
-        distance = self.dragon.get_distance(self.coordinates)
-        return distance > 15
-    
-    def pillage(self, amount: int = 3) -> int:
-        """Pillage the domain, removing scorched earth and returning treasure.
-        Returns amount of treasure gained.
-        """
-        taken = min(amount, self.blessings)
-        if self.blessings == taken:
-            self.die("pillaged")
-        return taken
-    
-    def update(self) -> None:
-        """Update domain state."""
-        if self.is_dead:
-            return
-        
-        # If dragon is dead, domain becomes a pillage-able treasury
-        if self.dragon and not self.dragon.is_alive:
-            self.is_treasury = True
-            self.visual_state = "treasury"
-            self.dragon = None
-    
     def get_visual(self):
-        data = super().get_visual()
+        data = {"tiles": super().get_visual()}
         if self.is_scorched and not self.is_dead:
             # Add scorched earth background
-            tiles = []
+            bg_tiles = []
             cx, cy = self.coordinates
             for dy in range(-SCORCH_RADIUS, SCORCH_RADIUS + 1):
                 for dx in range(-SCORCH_RADIUS, SCORCH_RADIUS + 1):
                     if dx * dx + dy * dy < SCORCH_RADIUS * SCORCH_RADIUS:
                         x, y = cx + dx, cy + dy
-                        tiles.append(((x, y), self.background_color))
-            data.update({
-                "background_tiles": tiles,
-                "terrain_overlays": self.get_scorched_terrain_overlay()
-            })
-        
+                        bg_tiles.append(((x, y), self.background_color))
+            data["background_tiles"] = bg_tiles
+            data["scorched_terrain_overlay"] = {
+                str(coords): [symbol, color]
+                for coords, (symbol, color) in self.get_scorched_terrain_overlay().items()
+            }
+
         return data
 
     def serialize(self) -> Dict[str, Any]:

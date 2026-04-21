@@ -97,7 +97,7 @@ export function renderEntities(timestamp) {
 export async function updateEntities() {
     const startTime = performance.now();
     try {
-        const response = await fetch('/api/world');
+        const response = await fetch('/api/render_world');
         const data = await response.json();
         
         entityMap.clear();

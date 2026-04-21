@@ -112,6 +112,8 @@ h1 {
 canvas {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
+    padding-right: 2.5rem;
+    padding-bottom: 2.5rem;
 }
 
 pre {

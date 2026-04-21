@@ -16,19 +16,14 @@ def get_world():
     # Serialize all entities
     serialized_entities = []
     for entity in list(world.entities):
+        if not hasattr(entity, "get_visual"):
+            continue
+
         data = entity.get_visual()
-        
-        # For Domain entities, populate scorched terrain overlay
-        if entity.__class__.__name__ == 'Domain':
-            overlay_dict = entity.get_scorched_terrain_overlay()
-            # Convert to JSON-friendly format
-            data["scorched_terrain_overlay"] = {
-                str(coords): [symbol, color] 
-                for coords, (symbol, color) in overlay_dict.items()
-            }
-        
+        if isinstance(data, list):
+            data = {"tiles": data}
         serialized_entities.append(data)
-    
+
     # Get current game time
     game_time = world.time.current_time
     
