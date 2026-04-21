@@ -21,6 +21,7 @@ class Spire(Entity, Aging, Ruins, Visible):
         super().__init__(world, coordinates)  # Goldenrod color
         Aging.__init__(self, lifespan=LIFESPAN_DAYS)
         Ruins.__init__(self, ruins_duration=RUINS_DURATION_DAYS)
+        Visible.__init__(self)
         self.city = city  # Parent city
         
         self.create_small("default", "#DAA520", "Ї")

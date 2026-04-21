@@ -32,9 +32,12 @@ class Visible:
     def create_large(
         self,
         state_name: str,
-        tiles: list[VisualTile],
+        tiles: list,
     ):
-        self.states[state_name] = tiles
+        self.states[state_name] = [
+            t if isinstance(t, VisualTile) else VisualTile(t[0], t[1], t[2])
+            for t in tiles
+        ]
     
     def get_visual(self) -> Dict[str, list[VisualTile]]:
         """Get visual representation based on current state."""

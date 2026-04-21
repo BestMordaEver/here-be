@@ -26,7 +26,7 @@ class Spirit(Entity, Pockets):
         coordinates: Coordinates,
         domain_tiles: List[Tuple[int, int]] = None,
     ):
-        super().__init__(world, "", "", coordinates)
+        super().__init__(world, coordinates)
         Pockets.__init__(self, max_blessings=1)
         self.type = type    # forest, lake, mountain
         self.domain_tiles = domain_tiles if domain_tiles is not None else []

@@ -35,6 +35,7 @@ class Settlement(Entity, Named, Thinking, Scheduled, Visible, Pockets):
         self.life = life
 
         # Event tracking
+        self.days_since_attack = 0
         self.days_since_market = 0
         self.days_since_celebration = 0
     
@@ -50,7 +51,11 @@ class Settlement(Entity, Named, Thinking, Scheduled, Visible, Pockets):
         
     def get_tiles(self) -> List[Tuple[Coordinates, str, str]]:
         """Return list of (coordinates, symbol, color) for all tiles in settlement."""
-        raise NotImplementedError
+        return [(
+            (tile.offset[0] + self.coordinates[0], tile.offset[1] + self.coordinates[1]),
+            tile.character,
+            tile.color
+        ) for tile in self.states[self.visual_state]]
     
     def occupies(self, coordinates: Coordinates) -> bool:
         """Check if this settlement occupies the given coordinates."""

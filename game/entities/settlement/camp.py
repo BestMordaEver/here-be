@@ -75,7 +75,9 @@ class Camp(Settlement, Extractor):
         """Try to send blessings to parent, then extract from spirits."""
         if self.is_dead:
             return
-        
+
+        if self.home and not self.home.is_alive:
+            self.home = None
         # Send blessing to parent settlement if we have one
         if self.has_blessings and self.home and self.home.is_alive:
             from ..caravan import Caravan, CaravanMission
