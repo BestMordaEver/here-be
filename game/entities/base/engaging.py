@@ -5,8 +5,46 @@ trading, etc.) that persist for a time period and resolve at hour-end.
 
 The lifecycle:
     1. Entity calls engage() to start or join_engagement() to enter an existing one
-    2. During the hour, entities can disengage() (flee, interrupt)
-    3. At the end of the hour, resolve_engagement() is called — subclasses override for outcomes
+    2. At the end of the hour, resolve_engagement() is called — subclasses override for outcomes
+
+Resolution contract:
+    Each entity's resolve_engagement() must only modify its own state.
+    The sole exception is ROBBERY and PILLAGING, which perform blessing transfers
+    (bandit/hero take from caravan/settlement/domain as the intended mechanic).
+
+Engagement resolution map:
+    COMBAT:
+        Dragon     — dies if ≥ PARTY_SIZE heroes in engagement; handles own hunger (anthropophage)
+        Hero       — determines own casualty fate by party position; solo: may die or tire
+        Bandit     — dies if a vengeful hero is present; takes blessings from settlement if winning
+        Settlement — takes damage (hurt/die) based on attacker type and presence of protectors
+        Camp       — same as Settlement (shares resolver)
+
+    ROBBERY:
+        Bandit     — takes caravan's blessing (initiator; transfer exception)
+        Caravan    — (target; bandit resolver handles the transfer as the exception)
+
+    TENDING:
+        Spirit     — calls get_tended() to generate a blessing (target)
+        Dragon     — pass (no self-change needed; spirit generates blessing)
+
+    FEEDING:
+        Cattle     — dies when devoured by a dragon (target)
+        Dragon     — marks self no longer hungry (anthropophage diet)
+
+    PILLAGING:
+        Hero       — takes blessings from settlement ruins or dragon domain (transfer exception)
+        Bandit     — takes blessings from settlement ruins or dragon domain (transfer exception)
+        Settlement — (target; hero/bandit resolver handles deduction via pillage_ruins)
+        Domain     — (target; hero/bandit resolver handles deduction via pillage)
+
+    RESTING:
+        Hero       — no-op (just passing time)
+        Dragon     — pass (no-op)
+
+    HOARDING:
+        Dragon     — pass (TODO: domain accumulation mechanics undefined)
+        Domain     — (target; hoarding mechanics not yet implemented)
 """
 from dataclasses import dataclass, field
 from enum import Enum
@@ -86,18 +124,6 @@ class Engagement:
         self.participants.add(entity)
         return True
 
-    def remove_participant(self, entity: "Engaging") -> bool:
-        """
-        Remove a participant from the engagement.
-
-        Returns:
-            True if removed, False if wasn't participating
-        """
-        if entity not in self.participants:
-            return False
-        self.participants.discard(entity)
-        return True
-
     def is_solo(self) -> bool:
         """Check if this is a solo engagement (one participant)."""
         return len(self.participants) == 1
@@ -141,9 +167,6 @@ class Engaging:
     ) -> Engagement:
         """
         Start or join an engagement. Supports solo activities and multi-participant interactions.
-
-        Current action is pushed onto the stack so it can be resumed after disengagement,
-        even if there are nested engagements/interruptions.
 
         Args:
             engagement_type: Type of engagement (COMBAT, ROBBERY, RESTING, etc.)
@@ -191,6 +214,7 @@ class Engaging:
     def join_engagement(self, engagement: Engagement) -> Engagement:
         """
         Join an existing engagement as a participant.
+        Has no effect if the entity is already in an engagement.
 
         Args:
             engagement: The engagement to join
@@ -198,39 +222,13 @@ class Engaging:
         Returns:
             The engagement (for chaining)
         """
-        if self.current_engagement is engagement:
-            return engagement  # Already in this engagement
-
-        # Leave current engagement if any
-        if self.current_engagement:
-            self.disengage()
+        if self.current_engagement is not None:
+            return self.current_engagement  # Locked in; cannot switch
 
         engagement.add_participant(self)
         self.current_engagement = engagement
 
         return engagement
-
-    def disengage(self) -> bool:
-        """
-        Leave current engagement. Called when interrupted or when entity chooses to leave.
-        Removes self from participants and clears reference.
-        To end the engagement, call resolve_engagement() instead.
-
-        Returns:
-            True if was engaged and successfully disengaged
-        """
-        if not self.current_engagement:
-            return False
-
-        engagement = self.current_engagement
-
-        # Remove self from participants
-        engagement.remove_participant(self)
-
-        # Clear our engagement reference
-        self.current_engagement = None
-
-        return True
 
     def is_engaged(self) -> bool:
         """Check if currently in an engagement."""

@@ -108,7 +108,7 @@ def _execute_pillage(bandit: 'Bandit') -> None:
     can_pillage = False
     if isinstance(target, Settlement) and target.can_be_pillaged():
         can_pillage = True
-    elif isinstance(target, Domain) and target.treasure > 0:
+    elif isinstance(target, Domain) and target.has_blessings:
         can_pillage = True
 
     if can_pillage:
@@ -150,10 +150,6 @@ def check_for_encounters(bandit: 'Bandit') -> None:
 
     for entity in nearby:
         if entity.__class__.__name__ == 'Dragon' and entity.is_alive:
-            # Disengage from any current engagement first
-            if bandit.is_engaged():
-                bandit.disengage()
-
             bandit.fleeing_from = entity
             bandit.flee_from(entity)
 
@@ -197,6 +193,13 @@ def resolve_engagement(bandit: 'Bandit') -> None:
     elif engagement.engagement_type == EngagementType.COMBAT:
         others = engagement.get_others(bandit)
 
+        # Die if a vengeful hero is in this fight
+        from game.entities.hero.types import HeroMood
+        for entity in others:
+            if entity.__class__.__name__ == 'Hero' and entity.is_alive and entity.mood == HeroMood.VENGEFUL:
+                bandit.die("slain by vengeful hero")
+                return
+
         protectors = 0
         bandits = 0
         attacking_dragons = 0
@@ -217,8 +220,7 @@ def resolve_engagement(bandit: 'Bandit') -> None:
             from game.entities.settlement.settlement import Settlement
             for entity in others:
                 if isinstance(entity, Settlement):
-                    for ally in [bandit] + [e for e in others if e.__class__.__name__ == 'Bandit' and e is not bandit]:
-                        ally.transfer_from(entity, ally.available_space())
+                    bandit.transfer_from(entity, bandit.available_space())
                     break
 
     elif engagement.engagement_type == EngagementType.PILLAGING:
@@ -230,17 +232,17 @@ def resolve_engagement(bandit: 'Bandit') -> None:
                 if other is bandit:
                     continue
                 if isinstance(other, Settlement) and other.can_be_pillaged():
-                    taken = other.pillage_ruins(can_take)
-                    bandit.store_blessing(taken)
+                    taken = other.transfer_to(bandit, can_take)
                     bandit.days_since_robbery = 0
                     bandit.think(f"Looted {taken} blessing{'s' if taken > 1 else ''} from the ruins.")
                     break
-                if isinstance(other, Domain) and other.treasure > 0:
-                    taken = min(can_take, other.treasure)
-                    other.treasure -= taken
-                    bandit.store_blessing(taken)
-                    bandit.days_since_robbery = 0
-                    bandit.think(f"Looted {taken} blessing{'s' if taken > 1 else ''} from the hoard.")
+                if isinstance(other, Domain) and other.has_blessings:
+                    taken = other.transfer_to(bandit, can_take)
+                    if not other.has_blessings:
+                        other.die("pillaged")
+                    if taken > 0:
+                        bandit.days_since_robbery = 0
+                        bandit.think(f"Looted {taken} blessing{'s' if taken > 1 else ''} from the hoard.")
                     break
 
     bandit.complete_current_action()

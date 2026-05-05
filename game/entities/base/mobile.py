@@ -27,6 +27,8 @@ class Mobile(Entity):
         self.movement_debt = 0.0  # Accumulated cost from diagonal movement
         self.loiter = loiter  # Cycles to wait between moves
         self.loiter_counter = 0  # Current loiter countdown
+        self.confused: bool = False   # Fully confused by SERPENT dragon; wanders randomly until next hour
+        self.erratic_steps: int = 0   # Partial confusion (exempt heroes); N steps of random movement remaining
     
     def set_target(self, target: 'Coordinates | Entity') -> bool:
         """
@@ -138,11 +140,39 @@ class Mobile(Entity):
         
         return []
     
+    def _wander_step(self) -> None:
+        """Take one random passable adjacent step (used during confusion)."""
+        from random import shuffle
+        x, y = self.coordinates
+        neighbors = []
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                if dx == 0 and dy == 0:
+                    continue
+                nx, ny = x + dx, y + dy
+                if (0 <= nx < self.world.WIDTH and 0 <= ny < self.world.HEIGHT
+                        and self.is_passable((nx, ny))):
+                    neighbors.append((nx, ny))
+        if neighbors:
+            shuffle(neighbors)
+            self.move_to(neighbors[0])
+
     def update_movement(self) -> None:
         """
         Called every 10 seconds to process movement.
         Moves one step along the current path, respecting loiter delays.
         """
+        # Confusion states from SERPENT dragon — override normal pathfinding
+        if self.confused or self.erratic_steps > 0:
+            if self.erratic_steps > 0:
+                self.erratic_steps -= 1
+            if self.loiter_counter > 0:
+                self.loiter_counter -= 1
+                return
+            self._wander_step()
+            self.loiter_counter = self.loiter
+            return
+
         if not (self.in_transit and self.path):
             return
         

@@ -1,7 +1,8 @@
 """Spirit base class - stationary entities with domain areas."""
-from typing import TYPE_CHECKING, List, Tuple
+from typing import TYPE_CHECKING, List, Tuple, Optional
 from enum import Enum
 from .base import Entity, Coordinates, Pockets
+from .base.engaging import EngagementType, Engagement
 
 
 if TYPE_CHECKING:
@@ -56,6 +57,18 @@ class Spirit(Entity, Pockets):
     def update(self) -> None:
         """Update spirit state during timestep."""
         pass  # Spirits are passive
+
+    def resolve_engagement(self) -> Optional[Engagement]:
+        """Spirits generate a blessing when tended by a dragon."""
+        engagement = self.current_engagement
+        self.current_engagement = None
+        if not engagement:
+            return engagement
+
+        if engagement.engagement_type == EngagementType.TENDING:
+            self.get_tended()
+
+        return engagement
     
     def serialize(self):
         """Serialize spirit to dictionary for JSON output."""

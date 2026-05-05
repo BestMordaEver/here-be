@@ -213,14 +213,38 @@ class Caravan(Mobile, Thinking, Scheduled, Pockets):
         
         return None
     
+    def resolve_engagement(self) -> None:
+        """Caravans are destroyed by blade dragons or unprotected anthropophage attacks."""
+        engagement = self.current_engagement
+        self.current_engagement = None
+        if not engagement:
+            return
+
+        if engagement.engagement_type == EngagementType.COMBAT:
+            for participant in engagement.participants:
+                if participant.__class__.__name__ != 'Dragon' or not participant.is_alive:
+                    continue
+
+                if participant.dragon_type.value == 'blade':
+                    self.die("destroyed by blade dragon")
+                    return
+
+                if getattr(participant, 'is_anthropophage', False):
+                    protectors = [
+                        p for p in engagement.participants
+                        if p.__class__.__name__ == 'Hero' or (
+                            p.__class__.__name__ == 'Dragon'
+                            and p is not participant
+                            and getattr(p, 'is_good', False)
+                        )
+                    ]
+                    if not protectors:
+                        self.die("devoured by dragon")
+                        return
+
     def react_to_encounter(self, other: 'Mobile') -> Optional[ScheduledAction]:
         """React to threats by fleeing from dragons."""
         if other.__class__.__name__ == 'Dragon':
-            # If we're being robbed, the robbery is interrupted by dragon fear
-            if self.is_engaged():
-                # The bandit will disengage due to their own fear check
-                pass
-            
             self.fleeing_from = other
             self._flee_to_settlement()
             self.think("A dragon! We must flee!")

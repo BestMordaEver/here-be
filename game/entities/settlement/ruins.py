@@ -49,19 +49,6 @@ class Ruins:
         
         return True  # Skip normal on_dawn processing when dead
 
-    def pillage_ruins(self, amount: int) -> int:
-        """Take blessings from these ruins.
-        
-        Args:
-            amount: Maximum blessings to take
-            
-        Returns:
-            Actual number of blessings taken
-        """
-        taken = min(amount, self.blessings)
-        self.blessings -= taken
-        return taken
-    
     def can_be_pillaged(self) -> bool:
         """Check if these ruins have anything to pillage."""
         return self.is_dead and self.blessings > 0

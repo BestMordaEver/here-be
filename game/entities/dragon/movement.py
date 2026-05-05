@@ -12,6 +12,43 @@ if TYPE_CHECKING:
 CIRCLE_RADIUS = 6        # Distance to circle around target
 CIRCLE_STEPS = 8         # Number of steps to complete a circle (8 = octagon)
 
+# SERPENT confusion
+CONFUSE_RADIUS = 8       # Tiles within which SERPENT disorients nearby entities
+ERRATIC_STEPS = 4        # Movement steps of erratic behavior for partially-exempt heroes
+
+def _is_exempt_hero(hero) -> bool:
+	"""Heroes on critical missions are partially exempt from SERPENT confusion."""
+	if not hero.current_action:
+		return False
+	return hero.current_action.action_type in (
+		ActionType.ESCORT,
+		ActionType.PROTECT,
+		ActionType.ATTACK,
+	)
+
+
+def _apply_confusion(dragon: 'Dragon') -> None:
+	"""Disorient nearby non-dragon mobile entities.
+
+	Fully confused entities wander randomly until the next hour.
+	Heroes on critical missions (ESCORT/PROTECT/ATTACK) are partially exempt
+	and receive a short burst of erratic movement instead.
+	"""
+	from game.entities.base.mobile import Mobile
+	for entity in dragon.get_nearby_entities(CONFUSE_RADIUS):
+		if entity.__class__.__name__ == 'Dragon':
+			continue
+		if not isinstance(entity, Mobile):
+			continue
+		if entity.is_engaged():
+			continue
+		if entity.__class__.__name__ == 'Hero' and _is_exempt_hero(entity):
+			if entity.erratic_steps == 0:
+				entity.erratic_steps = ERRATIC_STEPS
+		else:
+			entity.confused = True
+
+
 def update_movement(dragon: 'Dragon') -> None:
 	"""Process movement using Bresenham-style approach."""
 	if dragon.current_action and dragon.current_action.action_type != ActionType.REST and not dragon.in_transit:
@@ -69,7 +106,11 @@ def update_movement(dragon: 'Dragon') -> None:
 		(dragon.coordinates[0] + dx, dragon.coordinates[1] + dy),
 		forego_debt=dragon.dragon_type == DragonType.BLADE
 	)
-	
+
+	# SERPENT: confuse nearby entities while actively travelling
+	if dragon.dragon_type == DragonType.SERPENT:
+		_apply_confusion(dragon)
+
 	# Check if arrived
 	if dragon.coordinates == dragon.destination:
 		dragon.in_transit = False

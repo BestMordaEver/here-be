@@ -13,5 +13,6 @@ Village.start_action = start_action
 City.start_action = start_action
 Village.resolve_engagement = resolve_engagement
 City.resolve_engagement = resolve_engagement
+Camp.resolve_engagement = resolve_engagement
 
 __all__ = ["Camp", "Village", "City", "Spire", "Settlement"]

@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Dict, Any, List, Optional, Tuple
 
 from game.entities.base import Coordinates, Entity, Visible, Pockets
 from game.world import Biome
-from .types import DomainType
+from .types import DomainType, DragonType
 
 if TYPE_CHECKING:
     from game.world import World
@@ -11,7 +11,9 @@ if TYPE_CHECKING:
 
 
 # Domain constants
-SCORCH_RADIUS = 10  # Radius of scorched earth effect
+SCORCH_RADIUS = 10      # Radius of scorched earth effect
+DOMAIN_HOARD_MAX = 10   # Max blessings a regular domain can accumulate
+MIDAS_HOARD_MAX = 20    # Midas domain stores twice as much
 
 
 class Domain(Entity, Visible, Pockets):
@@ -102,7 +104,8 @@ class Domain(Entity, Visible, Pockets):
         # Domain color matches dragon color
         super().__init__(world, coordinates)
         Visible.__init__(self)
-        Pockets.__init__(self, max_blessings=-1)
+        hoard_max = MIDAS_HOARD_MAX if dragon.dragon_type == DragonType.MIDAS else DOMAIN_HOARD_MAX
+        Pockets.__init__(self, max_blessings=hoard_max)
 
         self.create_small("default", dragon.color, "ʘ")
         self.visual_state = "default"
@@ -129,15 +132,6 @@ class Domain(Entity, Visible, Pockets):
         # Check if dragon is far enough away (>15 tiles)
         distance = self.dragon.get_distance(self.coordinates)
         return distance > 15
-    
-    def pillage(self, amount: int = 3) -> int:
-        """Pillage the domain, removing scorched earth and returning treasure.
-        Returns amount of treasure gained.
-        """
-        taken = min(amount, self.blessings)
-        if self.blessings == taken:
-            self.die("pillaged")
-        return taken
     
     def update(self) -> None:
         """Update domain state."""

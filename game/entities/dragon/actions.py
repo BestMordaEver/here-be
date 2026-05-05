@@ -188,17 +188,32 @@ def resolve_engagement(dragon: 'Dragon') -> None:
     if not engagement:
         return
 
-    if engagement.engagement_type in (
-        EngagementType.FEEDING, # Hunger handled by schedule
-        EngagementType.RESTING, # Just passing time
-        EngagementType.TENDING, # Resolved by the spirit
-        EngagementType.HOARDING # Resolved by the domain
-    ):
-        pass
-    
+    if engagement.engagement_type in (EngagementType.FEEDING, EngagementType.RESTING):
+        pass  # Non-anthropophage hunger / idle time; targets handle their own fate
+
+    elif engagement.engagement_type == EngagementType.TENDING:
+        if dragon.dragon_type == DragonType.DRUID:
+            # Druids tend every spirit within radius, not just the engaged target
+            for spirit in dragon.get_nearby_entities(TEND_RADIUS_DRUID, 'Spirit'):
+                spirit.get_tended()
+        # Non-druid: target spirit handles generation via its own resolve_engagement
+
+    elif engagement.engagement_type == EngagementType.HOARDING:
+        # Midas dragons generate two blessings per hoard session
+        blessings_to_store = 2 if dragon.dragon_type == DragonType.MIDAS else 1
+        dragon.domain.store_blessing(blessings_to_store)
+
     elif engagement.engagement_type == EngagementType.COMBAT:
-        # Hungry anthropophage attempts to feed on human target
         from game.entities.hero import HeroMood
+        from game.entities.hero.types import PARTY_SIZE
+
+        # A full hero party overwhelms the dragon
+        living_heroes = [e for e in engagement.participants if e.__class__.__name__ == 'Hero' and e.is_alive]
+        if len(living_heroes) >= PARTY_SIZE:
+            dragon.die("slain by heroes")
+            return
+
+        # Hungry anthropophage attempts to feed on human target
 
         settlement = False
         bandit = False
@@ -249,6 +264,4 @@ def resolve_engagement(dragon: 'Dragon') -> None:
                 drop_blessing(dragon.world, dragon.coordinates, 1)
         
 
-        # TODO - hero party combat resolution
-    
     dragon.complete_current_action()

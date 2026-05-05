@@ -621,6 +621,12 @@ class Scheduled:
         Called each hour by the world. Check for scheduled actions.
         Override in subclasses for custom hourly behavior, but call super().
         """
+        # Clear SERPENT confusion at each hour boundary; re-path to restore movement
+        if getattr(self, 'confused', False):
+            self.confused = False
+            if getattr(self, 'destination', None) and getattr(self, 'in_transit', False):
+                self.path = self.find_path(self.destination)
+
         day = self.world.time.current_day
         
         # Safety check: ensure we have a future WAKE action

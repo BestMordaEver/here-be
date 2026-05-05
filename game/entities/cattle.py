@@ -100,6 +100,19 @@ class Cattle(Mobile, Scheduled):
         """Called when arriving at destination - just complete action."""
         self.complete_current_action()
         self.grazing = True
+
+    def resolve_engagement(self) -> None:
+        """Cattle die when devoured by a dragon during a FEEDING engagement."""
+        engagement = self.current_engagement
+        self.current_engagement = None
+        if not engagement:
+            return
+
+        if engagement.engagement_type == EngagementType.FEEDING:
+            for participant in engagement.participants:
+                if participant.__class__.__name__ == 'Dragon' and participant.is_alive:
+                    self.die("devoured by dragon")
+                    return
     
     def check_for_encounters(self) -> Optional[Mobile]:
         """Check for dragons (fear). Cattle flee from all dragons."""
@@ -114,11 +127,6 @@ class Cattle(Mobile, Scheduled):
     def react_to_encounter(self, other: 'Mobile') -> Optional[ScheduledAction]:
         """React to dragons by fleeing."""
         if other.__class__.__name__ == 'Dragon':
-            # If we're being hunted (engaged), we're probably about to die
-            # but we still try to flee
-            if self.is_engaged():
-                self.disengage()
-            
             self.fleeing_from = other
             self.grazing = False
             self.flee_from(other)

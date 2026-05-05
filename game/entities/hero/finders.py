@@ -32,7 +32,7 @@ def find_pillage_target(hero: 'Hero') -> Optional[Any]:
     from game.entities.settlement.settlement import Settlement
     for entity in list(hero.world.entities):
         # Dragon treasury
-        if isinstance(entity, Domain) and entity.is_treasury and entity.treasure > 0:
+        if isinstance(entity, Domain) and entity.is_treasury and entity.has_blessings:
             return entity
 
         # Settlement ruins

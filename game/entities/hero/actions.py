@@ -1,5 +1,5 @@
 """Hero actions - start_action, on_hour, encounters, engagement resolution."""
-from random import random, randint, sample
+from random import random, randint
 from typing import TYPE_CHECKING, Optional
 
 from game.entities.base.entity import Entity, EngagementType
@@ -184,7 +184,7 @@ def on_hour(hero: 'Hero', hour: int) -> None:
                     hero.think("I see ruins that hold treasure!")
                     break
             elif isinstance(entity, Domain):
-                if entity.is_treasury and entity.treasure > 0:
+                if entity.is_treasury and entity.has_blessings:
                     hero.opportunistic_target = entity
                     hero.think("A dragon's hoard lies unguarded!")
                     break
@@ -308,71 +308,70 @@ def resolve_engagement(hero: 'Hero') -> None:
                 if other is hero:
                     continue
                 if isinstance(other, Settlement) and other.can_be_pillaged():
-                    taken = other.pillage_ruins(can_take)
-                    hero.store_blessing(taken)
+                    taken = other.transfer_to(hero, can_take)
                     hero.think(f"Claimed {taken} blessing{'s' if taken > 1 else ''} from the ruins.")
                     break
-                if isinstance(other, Domain) and other.treasure > 0:
-                    taken = min(can_take, other.treasure)
-                    other.treasure -= taken
-                    hero.store_blessing(taken)
-                    hero.think(f"Claimed {taken} blessing{'s' if taken > 1 else ''} from the hoard.")
+                if isinstance(other, Domain) and other.has_blessings:
+                    taken = other.transfer_to(hero, can_take)
+                    if not other.has_blessings:
+                        other.die("pillaged")
+                    if taken > 0:
+                        hero.think(f"Claimed {taken} blessing{'s' if taken > 1 else ''} from the hoard.")
                     break
             else:
                 # Pillageable location (from engagement.location)
                 loc = engagement.location
                 if loc and loc is not hero:
                     if isinstance(loc, Settlement) and loc.can_be_pillaged():
-                        taken = loc.pillage_ruins(can_take)
-                        hero.store_blessing(taken)
+                        taken = loc.transfer_to(hero, can_take)
                         hero.think(f"Claimed {taken} blessing{'s' if taken > 1 else ''} from the ruins.")
-                    elif isinstance(loc, Domain) and loc.treasure > 0:
-                        taken = min(can_take, loc.treasure)
-                        loc.treasure -= taken
-                        hero.store_blessing(taken)
-                        hero.think(f"Claimed {taken} blessing{'s' if taken > 1 else ''} from the hoard.")
+                    elif isinstance(loc, Domain) and loc.has_blessings:
+                        taken = loc.transfer_to(hero, can_take)
+                        if not loc.has_blessings:
+                            loc.die("pillaged")
+                        if taken > 0:
+                            hero.think(f"Claimed {taken} blessing{'s' if taken > 1 else ''} from the hoard.")
 
     elif engagement.engagement_type == EngagementType.COMBAT:
-        others = engagement.get_others(hero)
+        from game.entities.dragon.types import DragonType
 
-        for other in others:
-            if not other.is_alive:
-                continue
+        dragon_opponent = next(
+            (e for e in engagement.participants if e.__class__.__name__ == 'Dragon'), None
+        )
 
-            if other.__class__.__name__ == 'Dragon':
-                # Full party: dragon dies, but heroes pay a price
-                if hero.party and len(hero.party) >= PARTY_SIZE:
-                    other.die("slain by heroes")
+        if dragon_opponent:
+            if hero.party and len(hero.party) >= PARTY_SIZE:
+                # Party fight: dragon handles its own death in dragon's resolver.
+                # Each hero determines its own fate deterministically by party position.
+                sacrifices = 2 if dragon_opponent.dragon_type == DragonType.BLADE else 1
+                sorted_party = sorted(hero.party, key=id)
+                am_casualty = hero in sorted_party[:sacrifices]
 
-                    from game.entities.dragon.types import DragonType
-                    sacrifices = 2 if other.dragon_type == DragonType.BLADE else 1
-                    candidates = [h for h in hero.party if h is not hero and h.is_alive]
-                    casualties = sample(candidates, min(sacrifices, len(candidates)))
-                    for h in casualties:
-                        h.die("slain by dragon")
+                hero.party = None
+                hero.party_leader = None
+                hero.mood = HeroMood.TIRED
+                hero.consecutive_active_days = 0
 
-                    for h in hero.party:
-                        h.party = None
-                        h.party_leader = None
-                        h.mood = HeroMood.TIRED
-                        h.consecutive_active_days = 0
-                    hero.party = None
-                    hero.party_leader = None
-
-                    hero.think("The beast is slain, but at great cost.")
+                if am_casualty:
+                    hero.die("slain by dragon")
+                    return
                 else:
-                    # Solo fight: hero becomes tired (unless vengeful)
-                    if hero.mood != HeroMood.VENGEFUL:
-                        hero.tired_today = True
+                    hero.think("The beast is slain, but at great cost.")
+            elif dragon_opponent.is_alive:
+                # Solo fight against a living dragon
+                if hero.mood != HeroMood.VENGEFUL:
+                    hero.tired_today = True
 
-                    if hero.tired_today and not finders.find_settlement_at(hero):
-                        hero.die("slain by dragon")
-                    else:
-                        hero.think("I barely survived the encounter.")
+                is_blade = dragon_opponent.dragon_type == DragonType.BLADE
+                if hero.tired_today and (is_blade or not finders.find_settlement_at(hero)):
+                    hero.die("slain by dragon")
+                    return
+                else:
+                    hero.think("I barely survived the encounter.")
 
-            elif other.__class__.__name__ == 'Bandit':
-                if hero.mood == HeroMood.VENGEFUL:
-                    other.die("slain by vengeful hero")
-                    hero.think("Justice is served.")
+        # Bandit in engagement: bandit handles its own death in bandit's resolver.
+        if any(e.__class__.__name__ == 'Bandit' for e in engagement.participants):
+            if hero.mood == HeroMood.VENGEFUL:
+                hero.think("Justice is served.")
 
     hero.complete_current_action()
