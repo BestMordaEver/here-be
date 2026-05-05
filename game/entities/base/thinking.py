@@ -63,7 +63,7 @@ MEMORY_STALENESS: dict[MemoryType, int] = {
     MemoryType.VILLAGE_HAS_BLESSING: 5,
     MemoryType.ATTACKED_BY_BANDIT: 5,
     MemoryType.SAW_DOMAIN: 10,
-    MemoryType.ATTACKED_BY_DRAGON: 10,
+    MemoryType.ATTACKED_BY_DRAGON: 5,
     MemoryType.SAW_HERO_DIE: 10,
 }
 

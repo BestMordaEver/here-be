@@ -3,7 +3,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Dict, Any, Optional
 
 from .base import (
-    Coordinates, Mobile, Thinking, Scheduled, Pockets,
+    Coordinates, Mobile, Thinking, Scheduled, Pockets, Visible,
     ActionType, ScheduledAction, EngagementType
 )
 from .settlement.settlement import Settlement
@@ -26,7 +26,7 @@ class CaravanMission(Enum):
     DELIVER_BLESSING = "deliver_blessing"  # Deliver blessing to parent settlement
 
 
-class Caravan(Mobile, Thinking, Scheduled, Pockets):
+class Caravan(Mobile, Visible, Thinking, Scheduled, Pockets):
     """A caravan that travels between settlements."""
 
     def __init__(
@@ -38,10 +38,14 @@ class Caravan(Mobile, Thinking, Scheduled, Pockets):
         mission: CaravanMission,
         target_spirit: 'Spirit' = None,  # For settle_camp mission
     ):
-        Mobile.__init__(self, world, "#2b1c00", '@', coordinates, loiter=4)  # Caravans skip 4 cycles
+        Mobile.__init__(self, world, coordinates, loiter=4)  # Caravans skip 4 cycles
+        Visible.__init__(self)
         Thinking.__init__(self, capacity=1)
         Scheduled.__init__(self)
         Pockets.__init__(self, max_blessings=1)
+
+        self.create_small("default", "#2b1c00", '@')
+        self.visual_state = "default"
         
         self.home = home
         self.destination = destination

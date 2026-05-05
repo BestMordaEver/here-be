@@ -21,7 +21,7 @@ class Bandit(Mobile, Visible, Thinking, Scheduled, Aging, Pockets):
         Visible.__init__(self)
         Thinking.__init__(self)
         Scheduled.__init__(self)
-        Aging.__init__(self)
+        Aging.__init__(self, LIFESPAN_DAYS)
         Pockets.__init__(self, max_blessings=MAX_BLESSINGS, wasteful=True)
 
         self.create_small("default", "#960000", "Ω")

@@ -216,7 +216,7 @@ def resolve_engagement(bandit: 'Bandit') -> None:
             elif entity.__class__.__name__ == 'Bandit':
                 bandits += 1
 
-        if bandits > 0 and bandits + attacking_dragons > protectors:
+        if bandits + 1 + attacking_dragons > protectors:
             from game.entities.settlement.settlement import Settlement
             for entity in others:
                 if isinstance(entity, Settlement):

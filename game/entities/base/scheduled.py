@@ -348,6 +348,8 @@ class DayPlanner:
         Returns list of created ScheduledActions.
         """
         if not self._planned:
+            # Even with no actions, still schedule sleep/wake cycle
+            self._schedule_sleep_wake([], self.day, self.dusk_hour)
             return []
         
         # Determine available window
@@ -405,28 +407,32 @@ class DayPlanner:
             result.append(action)
         
         self._planned = []
-        
-        # Schedule sleep/wake cycle - sleep after all actions are done
-        # Find the last scheduled action's time
-        last_action_time = (self.day, self.dusk_hour)  # Default to dusk
+        self._schedule_sleep_wake(result, self.day, self.dusk_hour)
+        return result
+
+    def _schedule_sleep_wake(
+        self,
+        result: List[ScheduledAction],
+        day: int,
+        dusk_hour: int,
+    ) -> None:
+        """Schedule SLEEP (after last action or at dusk) and WAKE (sleep + duration)."""
+        last_action_time = (day, dusk_hour)  # Default to dusk
         if result:
-            # Get the latest action we just scheduled
             last_action_time = max((a.day, a.hour) for a in result)
-        
-        # Sleep at the hour after last action
+
         sleep_day = last_action_time[0]
         sleep_hour = last_action_time[1] + 1
-        
-        # Handle hour overflow
+
         if sleep_hour >= 24:
             sleep_day += 1
             sleep_hour = 0
-        
+
         # If sleep would be before dusk on the same day, push to dusk
-        if (sleep_day, sleep_hour) < (self.day, self.dusk_hour):
-            sleep_day = self.day
-            sleep_hour = self.dusk_hour
-        
+        if (sleep_day, sleep_hour) < (day, dusk_hour):
+            sleep_day = day
+            sleep_hour = dusk_hour
+
         # Can't sleep in the past
         if (sleep_day, sleep_hour) <= (self.current_day, self.current_hour):
             sleep_day = self.current_day
@@ -434,17 +440,16 @@ class DayPlanner:
             if sleep_hour >= 24:
                 sleep_day += 1
                 sleep_hour = 0
-    
+
         self.schedule.set(ScheduledAction(
             day=sleep_day,
             hour=sleep_hour,
             action_type=ActionType.SLEEP
         ))
-        
-        # Schedule WAKE after sleep_duration
+
         wake_hour = (sleep_hour + self.sleep_duration) % 24
         wake_day = sleep_day + ((sleep_hour + self.sleep_duration) // 24)
-        
+
         self.schedule.set(ScheduledAction(
             day=wake_day,
             hour=wake_hour,

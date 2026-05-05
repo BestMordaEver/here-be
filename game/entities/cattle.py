@@ -3,10 +3,11 @@ from random import randint, random
 from typing import TYPE_CHECKING, Dict, Any, Optional
 
 from .base import (
-    Coordinates, Mobile, Scheduled, 
+    Coordinates, Mobile, Scheduled, Visible,
     ActionType, ScheduledAction, EngagementType
 )
 from .settlement.settlement import Settlement
+from game.world.types import Biome
 
 if TYPE_CHECKING:
     from game.world import World
@@ -19,13 +20,17 @@ FEAR_RADIUS = 12               # Distance to notice threats
 SCORCHED_FEAR_RADIUS = 8       # Distance to avoid scorched land
 
 
-class Cattle(Mobile, Scheduled):
+class Cattle(Mobile, Visible, Scheduled):
     """Cattle that wander and graze, fearing dragons and scorched land."""
     
     def __init__(self, world: 'World', color: str, coordinates: Coordinates):
-        Mobile.__init__(self, world, color, 'ɤ', coordinates, loiter=10)  # Cattle skip 10 cycles
+        Mobile.__init__(self, world, coordinates, loiter=10)  # Cattle skip 10 cycles
+        Visible.__init__(self)
         Scheduled.__init__(self)
-        
+
+        self.create_small("default", color, 'ɤ')
+        self.visual_state = "default"
+
         self.grazing = True
         self.fleeing_from = None
     
@@ -36,7 +41,7 @@ class Cattle(Mobile, Scheduled):
             return False
         
         height = self.world.height_map[y][x]
-        if self.world.get_biome_from_height(height) != 'field':
+        if self.world.get_biome_from_height(height) != Biome.FIELD:
             return False
         
         # Avoid settlements

@@ -21,7 +21,9 @@ class Blessing(Entity, Pockets):
     """
     
     def __init__(self, world: 'World', coordinates: Coordinates, count: int = 1):
-        super().__init__(world, "#FFD700", "✦", coordinates)  # Gold star
+        super().__init__(world, coordinates)
+        self.color = "#FFD700"
+        self.char = "✦"
         Pockets.__init__(self, max_blessings=-1)
         self.store_blessing(count)
     

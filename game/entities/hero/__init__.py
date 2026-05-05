@@ -125,7 +125,7 @@ class Hero(Mobile, Visible, Named, Thinking, Scheduled, Aging, Pockets):
         )
         for entity in self.get_nearby_entities(10):
             if hasattr(entity, 'is_talker') and entity.is_talker:
-                entity.add_event(event)
+                entity.add_memory(event)
 
         # Leave party
         if self.party:

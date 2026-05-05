@@ -302,6 +302,8 @@ def resolve_engagement(hero: 'Hero') -> None:
         pass  # Nothing to resolve
 
     elif engagement.engagement_type == EngagementType.PILLAGING:
+        from game.entities.settlement.settlement import Settlement
+        from game.entities.dragon.domain import Domain
         can_take = hero.available_space()
         if can_take > 0:
             for other in engagement.participants:
